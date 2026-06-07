@@ -367,6 +367,9 @@ router.get("/search-tcgid", async (req, res) => {
       quota,
     });
   } catch (err) {
+    if (err.rateLimit) {
+      return res.status(429).json({ error: "RATE_LIMIT", message: "JustTCG-Tageslimit erreicht. Morgen geht es weiter." });
+    }
     console.error("[/admin/search-tcgid]", err.message);
     res.status(500).json({ error: "SERVER_ERROR", message: err.message });
   }
