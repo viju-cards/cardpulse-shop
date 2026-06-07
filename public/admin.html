@@ -4,6 +4,11 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>CardPulse Shop · Admin</title>
+<link rel="manifest" href="/manifest.json">
+<meta name="theme-color" content="#09090f">
+<link rel="apple-touch-icon" href="/icon-192.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="CP Admin">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&family=DM+Mono:wght@400;500&family=Barlow+Condensed:wght@400;600;700;800;900&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet">
@@ -530,6 +535,15 @@
 
   async function listProducts(){ const r=await call('/admin/products','GET'); show('lOut',r.body); }
   async function listKeys(){ const r=await call('/admin/shop-keys','GET'); show('lOut',r.body); }
+
+  // ── PWA: Service Worker registrieren (macht die App installierbar) ──
+  if ('serviceWorker' in navigator) {
+    window.addEventListener('load', function(){
+      navigator.serviceWorker.register('/sw.js').catch(function(err){
+        console.warn('SW-Registrierung fehlgeschlagen:', err);
+      });
+    });
+  }
 </script>
 </body>
 </html>
