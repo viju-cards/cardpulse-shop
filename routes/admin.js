@@ -295,7 +295,6 @@ router.get("/missing-tcgid", async (_req, res) => {
   );
   res.json({ count: rows.length, products: rows });
 });
-
 // Für EINEN Eintrag bei JustTCG nach Sealed-Kandidaten suchen.
 // Sucht über tcgplayer_name; einzeln ausgelöst (schont das 100/Tag-Limit).
 router.get("/search-tcgid", async (req, res) => {
@@ -332,6 +331,41 @@ router.post("/set-tcgid", async (req, res) => {
     res.json({ updated: result.rowCount, slug, tcgId });
   } catch (err) {
     console.error("[/admin/set-tcgid]", err.message);
+    res.status(500).json({ error: "SERVER_ERROR", message: err.message });
+  }
+});
+
+// Cardmarket-Preis eines Eintrags holen (für den Plausibilitäts-Abgleich).
+// Nutzt denselben price_cache wie das Widget → meist kein TCGGO-Call.
+router.get("/cardmarket-price", async (req, res) => {
+  const cardmarketId = req.query.cmId;
+  if (!cardmarketId) return res.status(400).json({ error: "MISSING_CM_ID" });
+  try {
+    // Cache prüfen (12h TTL, gleich wie Widget)
+    const cached = await pool.query(
+      "SELECT payload, fetched_at FROM price_cache WHERE cardmarket_id = $1",
+      [cardmarketId]
+    );
+    const TTL = 12 * 60 * 60 * 1000;
+    if (cached.rows.length > 0 &&
+        Date.now() - new Date(cached.rows[0].fetched_at).getTime() < TTL) {
+      const p = cached.rows[0].payload;
+      return res.json({ lowest: p.lowest, currency: p.currency || "EUR", cached: true });
+    }
+    // sonst frisch holen + cachen
+    const product = await tcggo.fetchProductByCardmarketId(cardmarketId);
+    if (!product) return res.status(404).json({ error: "NOT_FOUND" });
+    const payload = tcggo.normalizePrices(product);
+    await pool.query(
+      `INSERT INTO price_cache (cardmarket_id, payload, fetched_at)
+            VALUES ($1, $2, NOW())
+       ON CONFLICT (cardmarket_id)
+       DO UPDATE SET payload = $2, fetched_at = NOW()`,
+      [cardmarketId, payload]
+    );
+    res.json({ lowest: payload.lowest, currency: payload.currency || "EUR", cached: false });
+  } catch (err) {
+    console.error("[/admin/cardmarket-price]", err.message);
     res.status(500).json({ error: "SERVER_ERROR", message: err.message });
   }
 });
