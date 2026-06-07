@@ -180,7 +180,7 @@ function rebuildPreview(){
 
 async function importSet(){
   const items=_setProducts.filter(function(p){return p.include && p.slug && p.cardmarketId;})
-    .map(function(p){ return { slug:p.slug.toLowerCase().trim(), cmId:p.cardmarketId }; });
+    .map(function(p){ return { slug:p.slug.trim(), cmId:p.cardmarketId, name:p.name }; });
   if(items.length===0){ show('setImportOut','Nichts ausgewählt oder Slugs fehlen.'); return; }
   try{ const r=await call('/admin/batch-import','POST',{ items }); show('setImportOut',r.body); }
   catch(e){ show('setImportOut','Fehler: '+e.message); }
