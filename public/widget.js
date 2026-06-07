@@ -100,7 +100,8 @@ router.get("/sealed", authenticateShop, async (req, res) => {
       },
       price: {
         currency: payload.currency || "EUR",
-        lowest: payload.lowest,    // primärer Vergleichswert
+        lowest: payload.lowest,      // primärer Vergleichswert (alle Länder)
+        lowestDE: payload.lowestDE,  // optional: nur deutsche Verkäufer
         avg7d: payload.avg7d,
         avg30d: payload.avg30d,
       },
