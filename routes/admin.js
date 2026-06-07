@@ -11,7 +11,7 @@
 const express = require("express");
 const crypto = require("crypto");
 const bcrypt = require("bcrypt");
-const router = express.Router(); 
+const router = express.Router();
 
 const { pool } = require("../lib/db");
 const tcggo = require("../lib/tcggo");
@@ -302,12 +302,24 @@ router.get("/search-tcgid", async (req, res) => {
   if (!q) return res.status(400).json({ error: "MISSING_QUERY" });
   try {
     const { candidates, quota } = await justtcg.searchSealed(q);
-    const filtered = justtcg.filterStrict(q, candidates);
+
+    // Bereits in der DB vergebene tcgplayer_ids holen → aus Treffern entfernen,
+    // damit dieselbe ID nicht versehentlich zweimal zugewiesen wird.
+    const usedRows = await pool.query(
+      "SELECT tcg_player_id FROM sealed_mapping WHERE tcg_player_id IS NOT NULL"
+    );
+    const used = new Set(usedRows.rows.map((r) => String(r.tcg_player_id)));
+
+    const free = candidates.filter((c) => !used.has(String(c.tcgplayerId)));
+    const removedUsed = candidates.length - free.length;
+
+    const filtered = justtcg.filterStrict(q, free);
     res.json({
       query: q,
-      candidates: filtered,        // streng gefiltert (gleiches Set + Typ)
-      allCandidates: candidates,   // volle Sealed-Liste (für "Alle anzeigen", kein Extra-Call)
-      hidden: candidates.length - filtered.length,
+      candidates: filtered,        // streng gefiltert + nur freie IDs
+      allCandidates: free,         // volle Sealed-Liste, aber ohne schon vergebene
+      hidden: free.length - filtered.length,
+      removedUsed,                 // wie viele wegen "schon vergeben" entfernt wurden
       quota,
     });
   } catch (err) {
@@ -359,7 +371,11 @@ router.get("/cardmarket-price", async (req, res) => {
         Date.now() - new Date(cached.rows[0].fetched_at).getTime() < TTL) {
       const p = cached.rows[0].payload;
       const val = p.lowest ?? p.avg30d ?? p.avg7d ?? null;
-      return res.json({ lowest: val, basis: priceBasis(p), currency: p.currency || "EUR", cached: true });
+      // Nur den Cache nutzen, wenn er WIRKLICH einen Preis hat.
+      // Sonst (alter null-Eintrag aus früherer Wrapper-Version) frisch holen.
+      if (val != null) {
+        return res.json({ lowest: val, basis: priceBasis(p), currency: p.currency || "EUR", cached: true });
+      }
     }
     // sonst frisch holen + cachen
     const product = await tcggo.fetchProductByCardmarketId(cardmarketId);
