@@ -1,0 +1,98 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>CardPulse Shop – Admin</title>
+<style>
+  body{font-family:system-ui,sans-serif;max-width:720px;margin:40px auto;padding:0 16px;color:#1a1a1a;background:#fafafa}
+  h1{font-size:22px}h2{font-size:16px;margin-top:32px}
+  .card{background:#fff;border:1px solid #e5e5e5;border-radius:12px;padding:20px;margin:16px 0}
+  label{display:block;font-size:13px;color:#555;margin:10px 0 4px}
+  input,select{width:100%;padding:8px 10px;border:1px solid #ccc;border-radius:8px;font-size:14px;box-sizing:border-box}
+  button{margin-top:14px;padding:10px 18px;border:none;border-radius:8px;background:#1a1a1a;color:#fff;font-size:14px;cursor:pointer}
+  button:hover{background:#333}
+  pre{background:#f4f4f4;border-radius:8px;padding:12px;font-size:12px;overflow:auto;white-space:pre-wrap;word-break:break-all}
+  .pw{background:#fff8e1;border:1px solid #ffe08a}
+  .hint{font-size:12px;color:#888;margin-top:2px}
+</style>
+</head>
+<body>
+<h1>CardPulse Shop – Admin</h1>
+
+<div class="card pw">
+  <label>Admin-Passwort</label>
+  <input type="password" id="adminPw" placeholder="ADMIN_PASSWORD aus Render">
+  <div class="hint">Wird nur lokal im Browser gehalten und bei jeder Anfrage mitgeschickt.</div>
+</div>
+
+<div class="card">
+  <h2>Produkt anlegen</h2>
+  <label>Name (für TCGGO-Suche)</label>
+  <input id="pName" placeholder="Paldea Evolved Booster">
+  <label>Slug (aus Cardmarket-URL)</label>
+  <input id="pSlug" placeholder="paldea-evolved-booster">
+  <label>oder direkt Cardmarket-ID (optional)</label>
+  <input id="pCmId" placeholder="877280">
+  <button onclick="addProduct()">Produkt speichern</button>
+  <pre id="pOut" style="display:none"></pre>
+</div>
+
+<div class="card">
+  <h2>Shop-Key erstellen</h2>
+  <label>Shop-Name</label>
+  <input id="kShop" placeholder="Card Cosmos">
+  <label>E-Mail (optional)</label>
+  <input id="kEmail" placeholder="info@cardcosmos.de">
+  <label>Plan</label>
+  <select id="kPlan">
+    <option value="starter">starter – 1.000/Monat</option>
+    <option value="shop">shop – 5.000/Monat</option>
+    <option value="pro">pro – 20.000/Monat</option>
+  </select>
+  <label>Erlaubte Domains (komma-getrennt)</label>
+  <input id="kOrigins" placeholder="https://cardcosmos.de, https://www.cardcosmos.de">
+  <button onclick="createKey()">Key erstellen</button>
+  <pre id="kOut" style="display:none"></pre>
+</div>
+
+<div class="card">
+  <h2>Übersichten</h2>
+  <button onclick="listProducts()">Produkte laden</button>
+  <button onclick="listKeys()">Keys laden</button>
+  <pre id="lOut" style="display:none"></pre>
+</div>
+
+<script>
+function pw(){ return document.getElementById('adminPw').value; }
+function show(id,obj){ var e=document.getElementById(id); e.style.display='block'; e.textContent=typeof obj==='string'?obj:JSON.stringify(obj,null,2); }
+
+async function call(path, method, body){
+  const opt={ method, headers:{ 'X-Admin-Password': pw() } };
+  if(body){ opt.headers['Content-Type']='application/json'; opt.body=JSON.stringify(body); }
+  const r=await fetch(path, opt);
+  return { status:r.status, body:await r.json() };
+}
+
+async function addProduct(){
+  const body={ name:document.getElementById('pName').value||undefined,
+               slug:document.getElementById('pSlug').value,
+               cmId:document.getElementById('pCmId').value||undefined, force:true };
+  try{ const r=await call('/admin/add-product','POST',body); show('pOut',r.body); }
+  catch(e){ show('pOut','Fehler: '+e.message); }
+}
+
+async function createKey(){
+  const origins=document.getElementById('kOrigins').value.split(',').map(s=>s.trim()).filter(Boolean);
+  const body={ shop:document.getElementById('kShop').value,
+               email:document.getElementById('kEmail').value||undefined,
+               plan:document.getElementById('kPlan').value, origins };
+  try{ const r=await call('/admin/create-shop-key','POST',body); show('kOut',r.body); }
+  catch(e){ show('kOut','Fehler: '+e.message); }
+}
+
+async function listProducts(){ const r=await call('/admin/products','GET'); show('lOut',r.body); }
+async function listKeys(){ const r=await call('/admin/shop-keys','GET'); show('lOut',r.body); }
+</script>
+</body>
+</html>
