@@ -317,6 +317,11 @@
           <span class="quota" id="quotaInfo"></span>
         </div>
         <div id="missingList"></div>
+        <hr style="border:none;border-top:1px solid var(--line);margin:22px 0 0">
+        <div class="toolbar" style="margin-top:18px">
+          <button class="btn ghost" onclick="loadNoMatch()">Als „kein TCG" markierte anzeigen</button>
+        </div>
+        <div id="noMatchList"></div>
       </div>
     </section>
 
@@ -490,6 +495,51 @@
     }catch(e){ document.getElementById('missingList').textContent='Fehler: '+e.message; }
   }
 
+  async function markNoMatch(i){
+    const p=_missing[i];
+    if(!confirm('"'+p.tcgplayer_name+'" als „kein TCGPlayer-Pendant" markieren? Verschwindet dann aus der Liste.')) return;
+    try{
+      const r=await call('/admin/mark-no-match','POST',{ slug:p.cardmarket_slug });
+      if(r.body.updated){
+        _missing.splice(i,1);  // aus lokaler Liste entfernen
+        delete _candCache[i];
+        renderMissing();
+      }
+    }catch(e){ alert('Fehler: '+e.message); }
+  }
+
+  var _noMatch=[];
+  async function loadNoMatch(){
+    try{
+      const r=await call('/admin/no-match-list','GET');
+      _noMatch=r.body.products||[];
+      renderNoMatch();
+    }catch(e){ document.getElementById('noMatchList').textContent='Fehler: '+e.message; }
+  }
+
+  function renderNoMatch(){
+    const c=document.getElementById('noMatchList');
+    if(_noMatch.length===0){ c.innerHTML='<p class="panel-hint" style="margin:6px 0 0">Keine Einträge als „kein Match" markiert.</p>'; return; }
+    var html='<table class="tbl"><tr><th>Name</th><th>Slug</th><th>Aktion</th></tr>';
+    _noMatch.forEach(function(p,i){
+      html+='<tr>'+
+        '<td>'+(p.tcgplayer_name||'')+'</td>'+
+        '<td><code>'+(p.cardmarket_slug||'')+'</code></td>'+
+        '<td><button class="btn sm ghost" onclick="unmarkNoMatch('+i+')">Zurücksetzen</button></td>'+
+        '</tr>';
+    });
+    html+='</table>';
+    c.innerHTML=html;
+  }
+
+  async function unmarkNoMatch(i){
+    const p=_noMatch[i];
+    try{
+      const r=await call('/admin/unmark-no-match','POST',{ slug:p.cardmarket_slug });
+      if(r.body.updated){ _noMatch.splice(i,1); renderNoMatch(); }
+    }catch(e){ alert('Fehler: '+e.message); }
+  }
+
   function renderMissing(){
     const c=document.getElementById('missingList');
     if(_missing.length===0){ c.innerHTML='<p class="panel-hint" style="margin:6px 0 0">Alle Einträge haben eine tcgplayer_id.</p>'; return; }
@@ -498,7 +548,8 @@
       html+='<tr>'+
         '<td>'+(p.tcgplayer_name||'')+'</td>'+
         '<td><code>'+(p.cardmarket_slug||'')+'</code></td>'+
-        '<td><button class="btn sm" onclick="searchTcgid('+i+')">Suchen</button></td>'+
+        '<td style="white-space:nowrap"><button class="btn sm" onclick="searchTcgid('+i+')">Suchen</button> '+
+        '<button class="btn sm ghost" onclick="markNoMatch('+i+')">Kein TCG</button></td>'+
         '</tr>'+
         '<tr id="cand-'+i+'"><td colspan="3" style="padding:0 8px"></td></tr>';
     });
