@@ -291,6 +291,50 @@ router.get("/missing-tcgid", async (_req, res) => {
        FROM sealed_mapping
       WHERE cardmarket_slug IS NOT NULL
         AND tcg_player_id IS NULL
+        AND tcg_no_match = FALSE
+      ORDER BY tcgplayer_name`
+  );
+  res.json({ count: rows.length, products: rows });
+});
+
+// Einen Eintrag als "kein TCGPlayer-Pendant" markieren (verschwindet aus der Liste)
+router.post("/mark-no-match", async (req, res) => {
+  const slug = (req.body.slug || "").trim();
+  if (!slug) return res.status(400).json({ error: "MISSING_SLUG" });
+  try {
+    const r = await pool.query(
+      "UPDATE sealed_mapping SET tcg_no_match = TRUE WHERE lower(cardmarket_slug) = lower($1)",
+      [slug]
+    );
+    res.json({ updated: r.rowCount, slug });
+  } catch (err) {
+    console.error("[/admin/mark-no-match]", err.message);
+    res.status(500).json({ error: "SERVER_ERROR", message: err.message });
+  }
+});
+
+// Markierung zurücknehmen (Eintrag erscheint wieder in der Liste)
+router.post("/unmark-no-match", async (req, res) => {
+  const slug = (req.body.slug || "").trim();
+  if (!slug) return res.status(400).json({ error: "MISSING_SLUG" });
+  try {
+    const r = await pool.query(
+      "UPDATE sealed_mapping SET tcg_no_match = FALSE WHERE lower(cardmarket_slug) = lower($1)",
+      [slug]
+    );
+    res.json({ updated: r.rowCount, slug });
+  } catch (err) {
+    console.error("[/admin/unmark-no-match]", err.message);
+    res.status(500).json({ error: "SERVER_ERROR", message: err.message });
+  }
+});
+
+// Alle als "kein Match" markierten Einträge auflisten (zum Zurücksetzen)
+router.get("/no-match-list", async (_req, res) => {
+  const { rows } = await pool.query(
+    `SELECT cardmarket_slug, cardmarket_id, tcgplayer_name
+       FROM sealed_mapping
+      WHERE tcg_no_match = TRUE
       ORDER BY tcgplayer_name`
   );
   res.json({ count: rows.length, products: rows });
