@@ -11,7 +11,7 @@
 const express = require("express");
 const crypto = require("crypto");
 const bcrypt = require("bcrypt");
-const router = express.Router();
+const router = express.Router(); 
 
 const { pool } = require("../lib/db");
 const tcggo = require("../lib/tcggo");
