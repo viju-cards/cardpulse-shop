@@ -15,6 +15,7 @@ const router = express.Router();
 
 const { pool } = require("../lib/db");
 const tcggo = require("../lib/tcggo");
+const justtcg = require("../lib/justtcg");
 
 const PLAN_LIMITS = { starter: 1000, shop: 5000, pro: 20000 };
 
@@ -277,6 +278,53 @@ router.get("/episode-products", async (req, res) => {
     res.json({ count: products.length, products });
   } catch (err) {
     console.error("[/admin/episode-products]", err.message);
+    res.status(500).json({ error: "SERVER_ERROR", message: err.message });
+  }
+});
+
+// ── tcgplayer_id nachziehen über JustTCG ─────────────────────────────────
+
+// Einträge OHNE tcgplayer_id auflisten (Kandidaten zum Nachziehen)
+router.get("/missing-tcgid", async (_req, res) => {
+  const { rows } = await pool.query(
+    `SELECT cardmarket_slug, cardmarket_id, tcgplayer_name
+       FROM sealed_mapping
+      WHERE cardmarket_slug IS NOT NULL
+        AND tcg_player_id IS NULL
+      ORDER BY tcgplayer_name`
+  );
+  res.json({ count: rows.length, products: rows });
+});
+
+// Für EINEN Eintrag bei JustTCG nach Sealed-Kandidaten suchen.
+// Sucht über tcgplayer_name; einzeln ausgelöst (schont das 100/Tag-Limit).
+router.get("/search-tcgid", async (req, res) => {
+  const q = (req.query.q || "").trim();
+  if (!q) return res.status(400).json({ error: "MISSING_QUERY" });
+  try {
+    const { candidates, quota } = await justtcg.searchSealed(q);
+    res.json({ query: q, candidates, quota });
+  } catch (err) {
+    console.error("[/admin/search-tcgid]", err.message);
+    res.status(500).json({ error: "SERVER_ERROR", message: err.message });
+  }
+});
+
+// Gewählte tcgplayer_id für einen Slug speichern
+router.post("/set-tcgid", async (req, res) => {
+  const slug = (req.body.slug || "").trim();
+  const tcgId = req.body.tcgId;
+  if (!slug || !tcgId) return res.status(400).json({ error: "MISSING_SLUG_OR_TCGID" });
+  try {
+    const result = await pool.query(
+      `UPDATE sealed_mapping
+          SET tcg_player_id = $2
+        WHERE lower(cardmarket_slug) = lower($1)`,
+      [slug, tcgId]
+    );
+    res.json({ updated: result.rowCount, slug, tcgId });
+  } catch (err) {
+    console.error("[/admin/set-tcgid]", err.message);
     res.status(500).json({ error: "SERVER_ERROR", message: err.message });
   }
 });
