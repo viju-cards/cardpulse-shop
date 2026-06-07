@@ -18,24 +18,37 @@ const tcggo = require("../lib/tcggo");
 
 const PLAN_LIMITS = { starter: 1000, shop: 5000, pro: 20000 };
 
-// Zentrale Upsert-Funktion – schreibt in die ECHTEN Spalten der Tabelle:
-//   cardmarket_name_normalized (NOT NULL), tcgplayer_name (NOT NULL),
-//   cardmarket_slug, cardmarket_id, product_type
-function makeNormalized(name) {
-  return (name || "").toLowerCase().trim();
+// Aus dem Cardmarket-Slug die beiden Namensfelder ableiten:
+//   slug "phantasmal-flames-booster"
+//   → normalized "phantasmal flames booster"   (klein, Leerzeichen)
+//   → display    "Phantasmal Flames Booster"   (Wortanfänge groß)
+function slugToNormalized(slug) {
+  return (slug || "").replace(/-/g, " ").toLowerCase().trim();
 }
-async function upsertMapping({ slug, cardmarketId, name, productType }) {
-  const normalized = makeNormalized(name);
+function slugToDisplay(slug) {
+  return slugToNormalized(slug)
+    .split(" ")
+    .map((w) => (w ? w.charAt(0).toUpperCase() + w.slice(1) : w))
+    .join(" ");
+}
+
+// Zentrale Upsert-Funktion – schreibt in die echten Spalten:
+//   cardmarket_slug, cardmarket_id, tcg_player_id (optional),
+//   cardmarket_name_normalized (NOT NULL), tcgplayer_name (NOT NULL)
+async function upsertMapping({ slug, cardmarketId, tcgplayerId }) {
+  const normalized = slugToNormalized(slug);
+  const display = slugToDisplay(slug);
   await pool.query(
     `INSERT INTO sealed_mapping
-       (cardmarket_slug, cardmarket_id, cardmarket_name_normalized, tcgplayer_name, product_type)
+       (cardmarket_slug, cardmarket_id, tcg_player_id,
+        cardmarket_name_normalized, tcgplayer_name)
      VALUES ($1, $2, $3, $4, $5)
      ON CONFLICT (cardmarket_slug)
      DO UPDATE SET cardmarket_id = $2,
-                   cardmarket_name_normalized = $3,
-                   tcgplayer_name = $4,
-                   product_type = COALESCE($5, sealed_mapping.product_type)`,
-    [slug, cardmarketId, normalized, name || normalized, productType || "sealed"]
+                   tcg_player_id = COALESCE($3, sealed_mapping.tcg_player_id),
+                   cardmarket_name_normalized = $4,
+                   tcgplayer_name = $5`,
+    [slug, cardmarketId, tcgplayerId || null, normalized, display]
   );
 }
 
@@ -94,7 +107,6 @@ router.post("/add-product", async (req, res) => {
     await upsertMapping({
       slug,
       cardmarketId: product.cardmarket_id,
-      name: product.name,
     });
 
     res.json({
@@ -188,10 +200,11 @@ router.post("/batch-import", async (req, res) => {
 
     try {
       let cardmarketId = item.cmId || null;
+      let tcgplayerId = item.tcgId || null;
       let name = item.name || null;
 
       // Nur dann TCGGO fragen, wenn wir die ID NICHT schon haben.
-      // Set-Import liefert cmId + name mit → gar kein API-Call → kein Rate-Limit.
+      // Set-Import liefert cmId + tcgId mit → gar kein API-Call → kein Rate-Limit.
       if (!cardmarketId) {
         if (!name) {
           results.push({ slug, ok: false, error: "NEED_NAME_OR_CMID" });
@@ -204,13 +217,14 @@ router.post("/batch-import", async (req, res) => {
           continue;
         }
         cardmarketId = product.cardmarket_id;
+        tcgplayerId = product.tcgplayer_id ?? tcgplayerId;
         name = product.name;
       }
 
       if (!name) name = slug;
 
-      await upsertMapping({ slug, cardmarketId, name });
-      results.push({ slug, ok: true, cardmarketId, name });
+      await upsertMapping({ slug, cardmarketId, tcgplayerId });
+      results.push({ slug, ok: true, cardmarketId, tcgplayerId, name });
     } catch (err) {
       results.push({ slug, ok: false, error: err.message });
     }
@@ -254,6 +268,7 @@ router.get("/episode-products", async (req, res) => {
       return {
         tcggoSlug: p.slug,
         cardmarketId: p.cardmarket_id,
+        tcgplayerId: p.tcgplayer_id ?? null,
         name: p.name,
         lowest: norm.lowest,
         avg30d: norm.avg30d,
