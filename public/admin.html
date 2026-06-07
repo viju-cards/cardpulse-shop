@@ -57,6 +57,41 @@
 </div>
 
 <div class="card">
+  <h2>Set-Import (ganze Expansion)</h2>
+  <div class="hint">Erst Episode (Set) suchen, dann alle Produkte als Vorschau laden. Pro Produkt den Slug wählen, dann importieren.</div>
+
+  <label>Set suchen (Name oder Code)</label>
+  <input id="epSearch" placeholder="z.B. Phantasmal Flames, Destined Rivals, sv...">
+  <button onclick="findEpisodes()">Sets suchen</button>
+  <pre id="epOut" style="display:none"></pre>
+
+  <div id="epProducts" style="display:none;margin-top:16px">
+    <div class="hint" style="margin-bottom:8px">Slug-Modus für alle Zeilen:
+      <select id="slugMode" onchange="rebuildPreview()" style="width:auto;display:inline-block">
+        <option value="tcggo">TCGGO-Slug übernehmen</option>
+        <option value="manual">Cardmarket-Slug manuell</option>
+      </select>
+    </div>
+    <table id="previewTable" style="width:100%;border-collapse:collapse;font-size:13px"></table>
+    <button onclick="importSet()" style="margin-top:12px">Ausgewählte importieren</button>
+    <pre id="setImportOut" style="display:none"></pre>
+  </div>
+</div>
+
+<div class="card">
+  <h2>Batch-Import (mehrere Produkte)</h2>
+  <div class="hint">Eine Zeile pro Produkt. Format: <code>slug;name</code> oder <code>slug;cmId</code>.<br>
+  Beispiel:<br>
+  <code>destined-rivals-booster;Destined Rivals Booster</code><br>
+  <code>paldea-evolved-booster;846729</code> (Zahl = wird als Cardmarket-ID erkannt)</div>
+  <label>Liste</label>
+  <textarea id="bList" rows="8" placeholder="slug;name oder slug;cmId — eine Zeile pro Produkt"
+    style="width:100%;padding:8px 10px;border:1px solid #ccc;border-radius:8px;font-size:13px;font-family:monospace;box-sizing:border-box"></textarea>
+  <button onclick="batchImport()">Alle importieren</button>
+  <pre id="bOut" style="display:none"></pre>
+</div>
+
+<div class="card">
   <h2>Übersichten</h2>
   <button onclick="listProducts()">Produkte laden</button>
   <button onclick="listKeys()">Keys laden</button>
@@ -89,6 +124,80 @@ async function createKey(){
                plan:document.getElementById('kPlan').value, origins };
   try{ const r=await call('/admin/create-shop-key','POST',body); show('kOut',r.body); }
   catch(e){ show('kOut','Fehler: '+e.message); }
+}
+
+var _setProducts = [];
+
+async function findEpisodes(){
+  const q=document.getElementById('epSearch').value;
+  try{
+    const r=await call('/admin/episodes?q='+encodeURIComponent(q),'GET');
+    if(r.body.episodes){
+      const lines=r.body.episodes.slice(0,40).map(function(e){
+        return 'ID '+e.id+'  ·  '+e.name+(e.code?' ('+e.code+')':'')+(e.releasedAt?'  ·  '+e.releasedAt:'')+
+          '   → <a href="#" onclick="loadSet('+e.id+');return false">Produkte laden</a>';
+      });
+      show('epOut','');
+      document.getElementById('epOut').innerHTML=lines.join('\n')||'Keine Sets gefunden.';
+    } else show('epOut',r.body);
+  }catch(e){ show('epOut','Fehler: '+e.message); }
+}
+
+async function loadSet(episodeId){
+  try{
+    const r=await call('/admin/episode-products?episodeId='+episodeId,'GET');
+    if(!r.body.products){ show('setImportOut',r.body); return; }
+    _setProducts=r.body.products.map(function(p){
+      return { tcggoSlug:p.tcggoSlug, cardmarketId:p.cardmarketId, name:p.name,
+               lowest:p.lowest, avg30d:p.avg30d, slug:p.tcggoSlug, include:true };
+    });
+    document.getElementById('epProducts').style.display='block';
+    rebuildPreview();
+  }catch(e){ show('setImportOut','Fehler: '+e.message); }
+}
+
+function rebuildPreview(){
+  const mode=document.getElementById('slugMode').value;
+  const t=document.getElementById('previewTable');
+  var html='<tr style="text-align:left;border-bottom:1px solid #ddd">'+
+    '<th style="padding:4px">✓</th><th style="padding:4px">Name</th>'+
+    '<th style="padding:4px">cm_id</th><th style="padding:4px">ab</th>'+
+    '<th style="padding:4px">Slug</th></tr>';
+  _setProducts.forEach(function(p,i){
+    var slugCell = mode==='manual'
+      ? '<input value="'+(p.slug||'')+'" onchange="_setProducts['+i+'].slug=this.value" style="width:100%;padding:4px;font-family:monospace;font-size:12px">'
+      : '<code>'+(p.tcggoSlug||'')+'</code>';
+    if(mode==='tcggo') _setProducts[i].slug=p.tcggoSlug;
+    html+='<tr style="border-bottom:1px solid #f0f0f0">'+
+      '<td style="padding:4px"><input type="checkbox" '+(p.include?'checked':'')+' onchange="_setProducts['+i+'].include=this.checked"></td>'+
+      '<td style="padding:4px">'+(p.name||'')+'</td>'+
+      '<td style="padding:4px">'+(p.cardmarketId||'-')+'</td>'+
+      '<td style="padding:4px">'+(p.lowest!=null?p.lowest+' €':'-')+'</td>'+
+      '<td style="padding:4px">'+slugCell+'</td></tr>';
+  });
+  t.innerHTML=html;
+}
+
+async function importSet(){
+  const items=_setProducts.filter(function(p){return p.include && p.slug && p.cardmarketId;})
+    .map(function(p){ return { slug:p.slug.toLowerCase().trim(), cmId:p.cardmarketId }; });
+  if(items.length===0){ show('setImportOut','Nichts ausgewählt oder Slugs fehlen.'); return; }
+  try{ const r=await call('/admin/batch-import','POST',{ items }); show('setImportOut',r.body); }
+  catch(e){ show('setImportOut','Fehler: '+e.message); }
+}
+
+async function batchImport(){
+  const lines=document.getElementById('bList').value.split('\n').map(l=>l.trim()).filter(Boolean);
+  const items=lines.map(function(line){
+    const parts=line.split(';').map(s=>s.trim());
+    const slug=parts[0];
+    const second=parts[1]||'';
+    // Reine Zahl → Cardmarket-ID, sonst Name
+    if(/^\d+$/.test(second)) return { slug, cmId: second };
+    return { slug, name: second };
+  });
+  try{ const r=await call('/admin/batch-import','POST',{ items }); show('bOut',r.body); }
+  catch(e){ show('bOut','Fehler: '+e.message); }
 }
 
 async function listProducts(){ const r=await call('/admin/products','GET'); show('lOut',r.body); }
