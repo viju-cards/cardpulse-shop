@@ -571,6 +571,16 @@
     cell.dataset.open='1';
     try{
       const r=await call('/admin/search-tcgid?q='+encodeURIComponent(p.tcgplayer_name),'GET');
+      // Tageslimit erreicht?
+      if(r.status===429 || (r.body && r.body.error==='RATE_LIMIT')){
+        cell.innerHTML='<span class="panel-hint" style="color:var(--gold);margin:8px 0;display:inline-block">⏳ JustTCG-Tageslimit (100/Tag) erreicht. Morgen geht es weiter.</span>';
+        document.getElementById('quotaInfo').textContent='JustTCG: Tageslimit erreicht';
+        return;
+      }
+      if(r.body && r.body.error){
+        cell.innerHTML='<span class="panel-hint" style="color:var(--danger);margin:8px 0;display:inline-block">Fehler: '+r.body.error+'</span>';
+        return;
+      }
       if(r.body.quota){
         document.getElementById('quotaInfo').textContent='JustTCG heute übrig: '+r.body.quota.dailyRemaining+'/'+r.body.quota.dailyLimit;
       }
