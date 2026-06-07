@@ -11,7 +11,7 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 
 // ── ENV-Prüfung ──────────────────────────────────────────────────────────
-const REQUIRED = ["DATABASE_URL", "RAPIDAPI_KEY", "RAPIDAPI_HOST", "ADMIN_PASSWORD"];
+const REQUIRED = ["DATABASE_URL", "RAPIDAPI_KEY", "RAPIDAPI_HOST", "ADMIN_PASSWORD", "JUSTTCG_KEY"];
 for (const k of REQUIRED) {
   if (!process.env[k]) {
     console.error(`FATAL: ENV "${k}" fehlt.`);
