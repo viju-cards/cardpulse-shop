@@ -502,33 +502,75 @@
     c.innerHTML=html;
   }
 
+  var _candCache={}; // pro Zeile: {filtered, all, showingAll, hidden}
+
   async function searchTcgid(i){
-    const p=_missing[i];
     const cell=document.querySelector('#cand-'+i+' td');
-    cell.innerHTML='<span class="panel-hint" style="margin:8px 0">Suche bei JustTCG …</span>';
+    // Toggle: ist schon offen → zuklappen (ohne neuen API-Call)
+    if(cell.dataset.open==='1'){ closeCand(i); return; }
+    // Aus Cache öffnen, falls schon mal gesucht (spart das Tageslimit)
+    if(_candCache[i]){ _candCache[i].showingAll=false; renderCands(i); return; }
+
+    const p=_missing[i];
+    cell.innerHTML='<span class="panel-hint" style="margin:8px 0;display:inline-block">Suche bei JustTCG …</span>';
+    cell.dataset.open='1';
     try{
       const r=await call('/admin/search-tcgid?q='+encodeURIComponent(p.tcgplayer_name),'GET');
       if(r.body.quota){
         document.getElementById('quotaInfo').textContent='JustTCG heute übrig: '+r.body.quota.dailyRemaining+'/'+r.body.quota.dailyLimit;
       }
-      const cands=r.body.candidates||[];
-      if(cands.length===0){ cell.innerHTML='<span class="panel-hint" style="color:var(--danger);margin:8px 0">Keine Sealed-Treffer gefunden.</span>'; return; }
-      var html='<div style="padding:6px 0 10px">';
-      cands.forEach(function(c){
-        html+='<div class="cand">'+
-          '<button class="btn sm" onclick="chooseTcgid(\''+p.cardmarket_slug.replace(/'/g,"\\'")+'\','+c.tcgplayerId+','+i+')">Wählen</button>'+
-          '<span><b>'+c.name+'</b> · '+(c.setName||'')+' · <code>'+c.tcgplayerId+'</code> · $'+(c.price!=null?c.price:'-')+'</span></div>';
-      });
-      html+='</div>';
-      cell.innerHTML=html;
-    }catch(e){ cell.innerHTML='<span class="panel-hint" style="color:var(--danger);margin:8px 0">Fehler: '+e.message+'</span>'; }
+      _candCache[i]={
+        filtered:r.body.candidates||[],
+        all:r.body.allCandidates||[],
+        hidden:r.body.hidden||0,
+        showingAll:false
+      };
+      renderCands(i);
+    }catch(e){ cell.innerHTML='<span class="panel-hint" style="color:var(--danger);margin:8px 0;display:inline-block">Fehler: '+e.message+'</span>'; }
   }
+
+  function renderCands(i){
+    const cell=document.querySelector('#cand-'+i+' td');
+    const st=_candCache[i];
+    if(!st){ return; }
+    cell.dataset.open='1';
+    const p=_missing[i];
+    const list=st.showingAll?st.all:st.filtered;
+
+    var head='<div style="display:flex;align-items:center;gap:14px;padding:6px 0 2px;flex-wrap:wrap">';
+    if(st.showingAll){
+      head+='<a href="#" class="lnk" onclick="setAll('+i+',false);return false">← nur passende ('+st.filtered.length+')</a>';
+    } else {
+      head+='<span class="panel-hint" style="margin:0">Passende Treffer: '+st.filtered.length+'</span>';
+      if(st.hidden>0) head+='<a href="#" class="lnk" onclick="setAll('+i+',true);return false">Alle anzeigen ('+st.all.length+', +'+st.hidden+' ausgeblendet)</a>';
+    }
+    head+='<a href="#" class="lnk" style="margin-left:auto" onclick="closeCand('+i+');return false">Schließen ✕</a></div>';
+
+    if(list.length===0){
+      cell.innerHTML=head+'<div class="panel-hint" style="color:var(--danger);margin:6px 0">Keine '+(st.showingAll?'':'passenden ')+'Sealed-Treffer.'+(!st.showingAll&&st.all.length>0?' Versuch „Alle anzeigen".':'')+'</div>';
+      return;
+    }
+    var html='<div style="padding:4px 0 10px">';
+    list.forEach(function(c){
+      html+='<div class="cand">'+
+        '<button class="btn sm" onclick="chooseTcgid(\''+p.cardmarket_slug.replace(/'/g,"\\'")+'\','+c.tcgplayerId+','+i+')">Wählen</button>'+
+        '<span><b>'+c.name+'</b> · '+(c.setName||'')+' · <code>'+c.tcgplayerId+'</code> · $'+(c.price!=null?c.price:'-')+'</span></div>';
+    });
+    html+='</div>';
+    cell.innerHTML=head+html;
+  }
+
+  function setAll(i,val){ if(_candCache[i]){ _candCache[i].showingAll=val; renderCands(i); } }
+  function closeCand(i){ const cell=document.querySelector('#cand-'+i+' td'); cell.innerHTML=''; cell.dataset.open='0'; }
 
   async function chooseTcgid(slug,tcgId,i){
     try{
       const r=await call('/admin/set-tcgid','POST',{ slug, tcgId });
       if(r.body.updated){
-        document.querySelector('#cand-'+i+' td').innerHTML='<span class="ok-msg">✓ tcg_id '+tcgId+' gespeichert</span>';
+        delete _candCache[i];
+        const cell=document.querySelector('#cand-'+i+' td');
+        cell.dataset.open='0';
+        cell.innerHTML='<span class="ok-msg">✓ tcg_id '+tcgId+' gespeichert</span>';
       }
     }catch(e){ alert('Fehler: '+e.message); }
   }
