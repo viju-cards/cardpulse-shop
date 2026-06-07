@@ -1,0 +1,22 @@
+{
+  "name": "cardpulse-shop",
+  "version": "0.1.0",
+  "description": "Cardmarket-Preis-Widget für TCG-Shops (Shopify/Shopware). Eigenständig, teilt nur die Neon-DB mit CardPulse.",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node --watch server.js",
+    "add-product": "node scripts/add-product.js",
+    "migrate": "psql \"$DATABASE_URL\" -f sql/001_init.sql"
+  },
+  "dependencies": {
+    "bcrypt": "^5.1.1",
+    "dotenv": "^16.4.5",
+    "express": "^4.19.2",
+    "node-fetch": "^2.7.0",
+    "pg": "^8.12.0"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
