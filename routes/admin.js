@@ -335,6 +335,14 @@ router.post("/set-tcgid", async (req, res) => {
   }
 });
 
+// Welche Preisbasis wurde verwendet (für die Anzeige)?
+function priceBasis(p) {
+  if (p.lowest != null) return "lowest";
+  if (p.avg30d != null) return "30d-avg";
+  if (p.avg7d != null) return "7d-avg";
+  return null;
+}
+
 // Cardmarket-Preis eines Eintrags holen (für den Plausibilitäts-Abgleich).
 // Nutzt denselben price_cache wie das Widget → meist kein TCGGO-Call.
 router.get("/cardmarket-price", async (req, res) => {
@@ -350,7 +358,8 @@ router.get("/cardmarket-price", async (req, res) => {
     if (cached.rows.length > 0 &&
         Date.now() - new Date(cached.rows[0].fetched_at).getTime() < TTL) {
       const p = cached.rows[0].payload;
-      return res.json({ lowest: p.lowest, currency: p.currency || "EUR", cached: true });
+      const val = p.lowest ?? p.avg30d ?? p.avg7d ?? null;
+      return res.json({ lowest: val, basis: priceBasis(p), currency: p.currency || "EUR", cached: true });
     }
     // sonst frisch holen + cachen
     const product = await tcggo.fetchProductByCardmarketId(cardmarketId);
@@ -363,7 +372,8 @@ router.get("/cardmarket-price", async (req, res) => {
        DO UPDATE SET payload = $2, fetched_at = NOW()`,
       [cardmarketId, payload]
     );
-    res.json({ lowest: payload.lowest, currency: payload.currency || "EUR", cached: false });
+    const val = payload.lowest ?? payload.avg30d ?? payload.avg7d ?? null;
+    res.json({ lowest: val, basis: priceBasis(payload), currency: payload.currency || "EUR", cached: false });
   } catch (err) {
     console.error("[/admin/cardmarket-price]", err.message);
     res.status(500).json({ error: "SERVER_ERROR", message: err.message });
