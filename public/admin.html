@@ -550,7 +550,7 @@
     }
     // Cardmarket-Preis-Bereich
     if(st.cmPrice!=null){
-      head+='<span class="cm-price">Cardmarket: ~'+st.cmPrice.toFixed(2)+' €</span>';
+      head+='<span class="cm-price">Cardmarket: ~'+st.cmPrice.toFixed(2)+' €'+(st.cmBasis&&st.cmBasis!=='lowest'?' ('+st.cmBasis+')':'')+'</span>';
     } else if(p.cardmarket_id){
       head+='<a href="#" class="lnk" onclick="checkPrice('+i+');return false">Preis prüfen</a>';
     }
@@ -588,10 +588,11 @@
       const r=await call('/admin/cardmarket-price?cmId='+encodeURIComponent(p.cardmarket_id),'GET');
       if(r.body && typeof r.body.lowest==='number'){
         _candCache[i].cmPrice=r.body.lowest;
+        _candCache[i].cmBasis=r.body.basis||null;
         renderCands(i);
       } else {
         _candCache[i].cmPrice=null;
-        alert('Kein Cardmarket-Preis verfügbar für dieses Produkt.');
+        alert('Cardmarket hat aktuell keinen gelisteten Preis für dieses Produkt (oft bei seltenen Gebinden wie Cases). Du kannst trotzdem manuell wählen.');
       }
     }catch(e){ alert('Fehler: '+e.message); }
   }
