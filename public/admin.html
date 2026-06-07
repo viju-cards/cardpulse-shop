@@ -527,6 +527,7 @@
         filtered:r.body.candidates||[],
         all:r.body.allCandidates||[],
         hidden:r.body.hidden||0,
+        removedUsed:r.body.removedUsed||0,
         showingAll:false
       };
       renderCands(i);
@@ -547,6 +548,9 @@
     } else {
       head+='<span class="panel-hint" style="margin:0">Passende Treffer: '+st.filtered.length+'</span>';
       if(st.hidden>0) head+='<a href="#" class="lnk" onclick="setAll('+i+',true);return false">Alle anzeigen ('+st.all.length+', +'+st.hidden+' ausgeblendet)</a>';
+    }
+    if(st.removedUsed>0){
+      head+='<span class="panel-hint" style="margin:0;color:var(--text-faint)">'+st.removedUsed+' bereits vergeben</span>';
     }
     // Cardmarket-Preis-Bereich
     if(st.cmPrice!=null){
