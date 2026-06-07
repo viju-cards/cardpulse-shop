@@ -148,8 +148,8 @@ async function loadSet(episodeId){
     const r=await call('/admin/episode-products?episodeId='+episodeId,'GET');
     if(!r.body.products){ show('setImportOut',r.body); return; }
     _setProducts=r.body.products.map(function(p){
-      return { tcggoSlug:p.tcggoSlug, cardmarketId:p.cardmarketId, name:p.name,
-               lowest:p.lowest, avg30d:p.avg30d, slug:p.tcggoSlug, include:true };
+      return { tcggoSlug:p.tcggoSlug, cardmarketId:p.cardmarketId, tcgplayerId:p.tcgplayerId,
+               name:p.name, lowest:p.lowest, avg30d:p.avg30d, slug:p.tcggoSlug, include:true };
     });
     document.getElementById('epProducts').style.display='block';
     rebuildPreview();
@@ -161,7 +161,7 @@ function rebuildPreview(){
   const t=document.getElementById('previewTable');
   var html='<tr style="text-align:left;border-bottom:1px solid #ddd">'+
     '<th style="padding:4px">✓</th><th style="padding:4px">Name</th>'+
-    '<th style="padding:4px">cm_id</th><th style="padding:4px">ab</th>'+
+    '<th style="padding:4px">cm_id</th><th style="padding:4px">tcg_id</th><th style="padding:4px">ab</th>'+
     '<th style="padding:4px">Slug</th></tr>';
   _setProducts.forEach(function(p,i){
     var slugCell = mode==='manual'
@@ -172,6 +172,7 @@ function rebuildPreview(){
       '<td style="padding:4px"><input type="checkbox" '+(p.include?'checked':'')+' onchange="_setProducts['+i+'].include=this.checked"></td>'+
       '<td style="padding:4px">'+(p.name||'')+'</td>'+
       '<td style="padding:4px">'+(p.cardmarketId||'-')+'</td>'+
+      '<td style="padding:4px">'+(p.tcgplayerId||'<span style="color:#c00">fehlt</span>')+'</td>'+
       '<td style="padding:4px">'+(p.lowest!=null?p.lowest+' €':'-')+'</td>'+
       '<td style="padding:4px">'+slugCell+'</td></tr>';
   });
@@ -180,7 +181,7 @@ function rebuildPreview(){
 
 async function importSet(){
   const items=_setProducts.filter(function(p){return p.include && p.slug && p.cardmarketId;})
-    .map(function(p){ return { slug:p.slug.trim(), cmId:p.cardmarketId, name:p.name }; });
+    .map(function(p){ return { slug:p.slug.trim(), cmId:p.cardmarketId, tcgId:p.tcgplayerId, name:p.name }; });
   if(items.length===0){ show('setImportOut','Nichts ausgewählt oder Slugs fehlen.'); return; }
   try{ const r=await call('/admin/batch-import','POST',{ items }); show('setImportOut',r.body); }
   catch(e){ show('setImportOut','Fehler: '+e.message); }
