@@ -154,4 +154,101 @@ router.get("/shop-keys", async (_req, res) => {
   res.json({ count: rows.length, keys: rows });
 });
 
+// ── Batch-Import ─────────────────────────────────────────────────────────
+//  Body: { items: [ { slug, name? , cmId? }, ... ] }
+//  Pro Zeile entweder cmId (direkt) oder name (TCGGO-Suche).
+//  Gibt pro Zeile ein Ergebnis zurück (saved / error), bricht nie komplett ab.
+router.post("/batch-import", async (req, res) => {
+  const items = Array.isArray(req.body.items) ? req.body.items : [];
+  if (items.length === 0) return res.status(400).json({ error: "NO_ITEMS" });
+  if (items.length > 100) return res.status(400).json({ error: "TOO_MANY", max: 100 });
+
+  const results = [];
+
+  for (const item of items) {
+    const slug = (item.slug || "").toLowerCase().trim();
+    if (!slug) { results.push({ slug: null, ok: false, error: "MISSING_SLUG" }); continue; }
+
+    try {
+      let product;
+      if (item.cmId) {
+        product = await tcggo.fetchProductByCardmarketId(item.cmId);
+      } else if (item.name) {
+        const matches = await tcggo.searchProductsByName(item.name, 10);
+        product = matches.find((p) => p.slug === slug) || matches[0];
+      } else {
+        results.push({ slug, ok: false, error: "NEED_NAME_OR_CMID" });
+        continue;
+      }
+
+      if (!product || !product.cardmarket_id) {
+        results.push({ slug, ok: false, error: "NOT_FOUND" });
+        continue;
+      }
+
+      const norm = (product.name || "").toLowerCase().trim();
+      await pool.query(
+        `INSERT INTO sealed_mapping
+           (cardmarket_slug, cardmarket_id, product_name, product_name_normalized)
+         VALUES ($1, $2, $3, $4)
+         ON CONFLICT (cardmarket_slug)
+         DO UPDATE SET cardmarket_id = $2, product_name = $3, product_name_normalized = $4`,
+        [slug, product.cardmarket_id, product.name, norm]
+      );
+      results.push({ slug, ok: true, cardmarketId: product.cardmarket_id, name: product.name });
+    } catch (err) {
+      results.push({ slug, ok: false, error: err.message });
+    }
+  }
+
+  const saved = results.filter((r) => r.ok).length;
+  res.json({ total: items.length, saved, failed: items.length - saved, results });
+});
+
+// ── Episoden (Sets) auflisten – um die Episode-ID zu finden ──────────────
+router.get("/episodes", async (req, res) => {
+  try {
+    let episodes = await tcggo.fetchEpisodes();
+    const q = (req.query.q || "").toLowerCase().trim();
+    if (q) {
+      episodes = episodes.filter(
+        (e) =>
+          (e.name || "").toLowerCase().includes(q) ||
+          (e.code || "").toLowerCase().includes(q) ||
+          (e.slug || "").toLowerCase().includes(q)
+      );
+    }
+    res.json({ count: episodes.length, episodes });
+  } catch (err) {
+    console.error("[/admin/episodes]", err.message);
+    res.status(500).json({ error: "SERVER_ERROR", message: err.message });
+  }
+});
+
+// ── Set-Vorschau: alle Produkte einer Episode (noch NICHT speichern) ─────
+//  Liefert pro Produkt den TCGGO-Slug + cardmarket_id + Preis,
+//  damit du in der UI je Zeile den Slug bestätigen/anpassen kannst.
+router.get("/episode-products", async (req, res) => {
+  const episodeId = req.query.episodeId;
+  if (!episodeId) return res.status(400).json({ error: "MISSING_EPISODE_ID" });
+
+  try {
+    const raw = await tcggo.fetchProductsByEpisode(episodeId);
+    const products = raw.map((p) => {
+      const norm = tcggo.normalizePrices(p);
+      return {
+        tcggoSlug: p.slug,
+        cardmarketId: p.cardmarket_id,
+        name: p.name,
+        lowest: norm.lowest,
+        avg30d: norm.avg30d,
+      };
+    });
+    res.json({ count: products.length, products });
+  } catch (err) {
+    console.error("[/admin/episode-products]", err.message);
+    res.status(500).json({ error: "SERVER_ERROR", message: err.message });
+  }
+});
+
 module.exports = router;
