@@ -22,17 +22,17 @@ const tcggo = require("../lib/tcggo");
 const CACHE_TTL_MS = 12 * 60 * 60 * 1000;
 
 router.get("/sealed", authenticateShop, async (req, res) => {
-  const slug = (req.query.slug || "").toLowerCase().trim();
+  const slug = (req.query.slug || "").trim();
   if (!slug) {
     return res.status(400).json({ error: "MISSING_SLUG" });
   }
 
   try {
-    // ── 2. Slug → cardmarket_id ────────────────────────────────────────
+    // ── 2. Slug → cardmarket_id (case-insensitiv, robust gegen Schreibweise) ─
     const map = await pool.query(
-      `SELECT cardmarket_id, product_name
+      `SELECT cardmarket_id, tcgplayer_name
          FROM sealed_mapping
-        WHERE cardmarket_slug = $1
+        WHERE lower(cardmarket_slug) = lower($1)
         LIMIT 1`,
       [slug]
     );
@@ -43,7 +43,7 @@ router.get("/sealed", authenticateShop, async (req, res) => {
     }
 
     const cardmarketId = map.rows[0].cardmarket_id;
-    const productName = map.rows[0].product_name;
+    const productName = map.rows[0].tcgplayer_name;
 
     // ── 3. Cache-Check ─────────────────────────────────────────────────
     let payload = null;
@@ -100,7 +100,8 @@ router.get("/sealed", authenticateShop, async (req, res) => {
       },
       price: {
         currency: payload.currency || "EUR",
-        lowest: payload.lowest,    // primärer Vergleichswert
+        lowest: payload.lowest,      // primärer Vergleichswert (alle Länder)
+        lowestDE: payload.lowestDE,  // optional: nur deutsche Verkäufer
         avg7d: payload.avg7d,
         avg30d: payload.avg30d,
       },
