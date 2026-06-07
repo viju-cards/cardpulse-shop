@@ -92,6 +92,15 @@
 </div>
 
 <div class="card">
+  <h2>tcgplayer_id nachziehen (für CardPulse)</h2>
+  <div class="hint">Listet Sealed-Einträge ohne tcgplayer_id. Pro Eintrag einzeln bei JustTCG suchen
+  (schont das 100/Tag-Limit), dann den passenden Sealed-Treffer wählen.</div>
+  <button onclick="loadMissing()">Einträge ohne tcg_id laden</button>
+  <span id="quotaInfo" style="font-size:12px;color:#888;margin-left:10px"></span>
+  <div id="missingList" style="margin-top:12px"></div>
+</div>
+
+<div class="card">
   <h2>Übersichten</h2>
   <button onclick="listProducts()">Produkte laden</button>
   <button onclick="listKeys()">Keys laden</button>
@@ -199,6 +208,68 @@ async function batchImport(){
   });
   try{ const r=await call('/admin/batch-import','POST',{ items }); show('bOut',r.body); }
   catch(e){ show('bOut','Fehler: '+e.message); }
+}
+
+var _missing = [];
+
+async function loadMissing(){
+  try{
+    const r=await call('/admin/missing-tcgid','GET');
+    _missing = r.body.products || [];
+    renderMissing();
+  }catch(e){ document.getElementById('missingList').textContent='Fehler: '+e.message; }
+}
+
+function renderMissing(){
+  const c=document.getElementById('missingList');
+  if(_missing.length===0){ c.innerHTML='<div class="hint">Alle Einträge haben eine tcgplayer_id. 🎉</div>'; return; }
+  var html='<table style="width:100%;border-collapse:collapse;font-size:13px">';
+  html+='<tr style="text-align:left;border-bottom:1px solid #ddd"><th style="padding:4px">Name</th><th style="padding:4px">Slug</th><th style="padding:4px">Aktion</th></tr>';
+  _missing.forEach(function(p,i){
+    html+='<tr style="border-bottom:1px solid #f0f0f0">'+
+      '<td style="padding:4px">'+(p.tcgplayer_name||'')+'</td>'+
+      '<td style="padding:4px"><code style="font-size:11px">'+(p.cardmarket_slug||'')+'</code></td>'+
+      '<td style="padding:4px"><button style="margin:0;padding:5px 10px;font-size:12px" onclick="searchTcgid('+i+')">Suchen</button></td>'+
+      '</tr>'+
+      '<tr id="cand-'+i+'"><td colspan="3" style="padding:0 4px"></td></tr>';
+  });
+  html+='</table>';
+  c.innerHTML=html;
+}
+
+async function searchTcgid(i){
+  const p=_missing[i];
+  const cell=document.querySelector('#cand-'+i+' td');
+  cell.innerHTML='<span class="hint">Suche bei JustTCG …</span>';
+  try{
+    const r=await call('/admin/search-tcgid?q='+encodeURIComponent(p.tcgplayer_name),'GET');
+    if(r.body.quota){
+      document.getElementById('quotaInfo').textContent=
+        'JustTCG heute übrig: '+r.body.quota.dailyRemaining+'/'+r.body.quota.dailyLimit;
+    }
+    const cands=r.body.candidates||[];
+    if(cands.length===0){ cell.innerHTML='<span class="hint" style="color:#c00">Keine Sealed-Treffer gefunden.</span>'; return; }
+    var html='<div style="padding:6px 0">';
+    cands.forEach(function(c){
+      html+='<div style="padding:4px 0;border-bottom:1px dotted #e0e0e0">'+
+        '<button style="margin:0 8px 0 0;padding:4px 8px;font-size:12px" '+
+        'onclick="chooseTcgid(\''+p.cardmarket_slug.replace(/'/g,"\\'")+'\','+c.tcgplayerId+','+i+')">Wählen</button>'+
+        '<b>'+c.name+'</b> · '+(c.setName||'')+' · tcg_id '+c.tcgplayerId+
+        ' · $'+(c.price!=null?c.price:'-')+'</div>';
+    });
+    html+='</div>';
+    cell.innerHTML=html;
+  }catch(e){ cell.innerHTML='<span class="hint" style="color:#c00">Fehler: '+e.message+'</span>'; }
+}
+
+async function chooseTcgid(slug,tcgId,i){
+  try{
+    const r=await call('/admin/set-tcgid','POST',{ slug, tcgId });
+    if(r.body.updated){
+      const cell=document.querySelector('#cand-'+i+' td');
+      cell.innerHTML='<span style="color:#2a7;font-size:13px">✓ tcg_id '+tcgId+' gespeichert</span>';
+    }
+  }catch(e){ alert('Fehler: '+e.message); }
 }
 
 async function listProducts(){ const r=await call('/admin/products','GET'); show('lOut',r.body); }
