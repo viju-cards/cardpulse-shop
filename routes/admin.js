@@ -303,7 +303,14 @@ router.get("/search-tcgid", async (req, res) => {
   if (!q) return res.status(400).json({ error: "MISSING_QUERY" });
   try {
     const { candidates, quota } = await justtcg.searchSealed(q);
-    res.json({ query: q, candidates, quota });
+    const filtered = justtcg.filterStrict(q, candidates);
+    res.json({
+      query: q,
+      candidates: filtered,        // streng gefiltert (gleiches Set + Typ)
+      allCandidates: candidates,   // volle Sealed-Liste (für "Alle anzeigen", kein Extra-Call)
+      hidden: candidates.length - filtered.length,
+      quota,
+    });
   } catch (err) {
     console.error("[/admin/search-tcgid]", err.message);
     res.status(500).json({ error: "SERVER_ERROR", message: err.message });
