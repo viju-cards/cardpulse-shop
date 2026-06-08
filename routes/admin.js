@@ -264,7 +264,14 @@ router.get("/episode-products", async (req, res) => {
 
   try {
     const raw = await tcggo.fetchProductsByEpisode(episodeId);
-    const products = raw.map((p) => {
+
+    // Schon in der DB vorhandene cardmarket_ids holen → diese Produkte ausblenden
+    const existingRows = await pool.query(
+      "SELECT cardmarket_id FROM sealed_mapping WHERE cardmarket_id IS NOT NULL"
+    );
+    const existing = new Set(existingRows.rows.map((r) => String(r.cardmarket_id)));
+
+    const allProducts = raw.map((p) => {
       const norm = tcggo.normalizePrices(p);
       return {
         tcggoSlug: p.slug,
@@ -275,7 +282,18 @@ router.get("/episode-products", async (req, res) => {
         avg30d: norm.avg30d,
       };
     });
-    res.json({ count: products.length, products });
+
+    // Nur Produkte, die noch NICHT in der DB sind
+    const products = allProducts.filter(
+      (p) => p.cardmarketId && !existing.has(String(p.cardmarketId))
+    );
+
+    res.json({
+      count: products.length,
+      total: allProducts.length,                       // wie viele das Set insgesamt hat
+      alreadyInDb: allProducts.length - products.length, // wie viele schon da sind
+      products,
+    });
   } catch (err) {
     console.error("[/admin/episode-products]", err.message);
     res.status(500).json({ error: "SERVER_ERROR", message: err.message });
