@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>CardPulse Shop · Admin</title>
-<link rel="manifest" href="/manifest.json"> 
+<link rel="manifest" href="/manifest.json">
 <meta name="theme-color" content="#09090f">
 <link rel="apple-touch-icon" href="/icon-192.png">
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -262,6 +262,7 @@
               </select>
             </div>
           </div>
+          <p class="panel-hint" id="setStatus" style="margin:0 0 12px"></p>
           <table class="tbl" id="previewTable"></table>
           <div class="btn-row"><button class="btn" onclick="importSet()" style="margin-top:14px">Ausgewählte importieren</button></div>
           <pre class="out" id="setImportOut"></pre>
@@ -442,6 +443,15 @@
                  name:p.name, lowest:p.lowest, avg30d:p.avg30d, slug:p.tcggoSlug, include:true };
       });
       document.getElementById('epProducts').style.display='block';
+      // Status-Hinweis: wie viele neu / schon vorhanden
+      var info=document.getElementById('setStatus');
+      if(r.body.total!=null){
+        if(r.body.count===0){
+          info.innerHTML='<span style="color:var(--teal)">✓ Set komplett vorhanden – alle '+r.body.total+' Produkte sind bereits in der DB.</span>';
+        } else {
+          info.innerHTML=r.body.count+' neue Produkte'+(r.body.alreadyInDb>0?' · '+r.body.alreadyInDb+' bereits vorhanden (ausgeblendet)':'')+' · '+r.body.total+' im Set gesamt';
+        }
+      } else { info.innerHTML=''; }
       rebuildPreview();
     }catch(e){ show('setImportOut','Fehler: '+e.message); }
   }
