@@ -1,198 +1,127 @@
-// public/widget.js – Cardmarket-Preis-Widget für die Produktseite.
+// routes/widget.js – Die zentrale Route, die das Shop-Widget aufruft.
 //
-// Einbau (Shopify-Produkt-Template):
-//   <div id="cardpulse-widget"
-//        data-slug="{{ product.metafields.cardpulse.cardmarket_slug }}"
-//        data-shop-price="{{ product.price | money_without_currency }}"></div>
-//   <script src="https://app.card-pulse.com/widget.js"
-//           data-key="{{ shop.metafields.cardpulse.api_key }}"></script>
+//   GET /widget/sealed?slug=paldea-evolved-booster
+//   Header: X-Shop-Key: sk_live_xxxxx
 //
-// Design: dezent & minimal. Pro Shop individuell über das in der DB
-// hinterlegte `theme`-JSON (kommt mit der API-Antwort) anpassbar.
+// Ablauf:
+//   1. Shop-Auth (Key, Origin, Limit)            → lib/shopAuth
+//   2. Slug → cardmarket_id                       → sealed_mapping
+//   3. Cache-Check (< TTL alt?)                   → price_cache
+//        ja  → DB-Preis (KEIN RapidAPI-Call)
+//        nein→ TCGGO holen, normalisieren, cachen
+//   4. Antwort + Zähler hoch
 
-(function () {
-  "use strict";
+const express = require("express");
+const router = express.Router();
 
-  var API_BASE = (function () {
-    var cur = document.currentScript;
-    if (cur && cur.src) { try { return new URL(cur.src).origin; } catch (e) {} }
-    return "";
-  })();
+const { pool } = require("../lib/db");
+const { authenticateShop, incrementUsage } = require("../lib/shopAuth");
+const tcggo = require("../lib/tcggo");
 
-  var SHOP_KEY = (function () {
-    var cur = document.currentScript;
-    return cur ? cur.getAttribute("data-key") : null;
-  })();
+// Cache-Lebensdauer. 12h = Preise sind frisch genug, RapidAPI bleibt geschont.
+const CACHE_TTL_MS = 12 * 60 * 60 * 1000;
 
-  function fmtEUR(n) {
-    if (n == null) return "–";
-    return n.toLocaleString("de-DE", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + " €";
+router.get("/sealed", authenticateShop, async (req, res) => {
+  const slug = (req.query.slug || "").trim();
+  if (!slug) {
+    return res.status(400).json({ error: "MISSING_SLUG" });
   }
 
-  function parseShopPrice(raw) {
-    if (!raw) return null;
-    // Shopify money_without_currency: "340,00" oder "340.00"
-    var s = String(raw).trim().replace(/\s/g, "");
-    if (s.indexOf(",") > -1 && s.indexOf(".") > -1) {
-      s = s.replace(/\./g, "").replace(",", ".");      // 1.340,00 → 1340.00
-    } else if (s.indexOf(",") > -1) {
-      s = s.replace(",", ".");                          // 340,00 → 340.00
+  try {
+    // ── 2. Slug → cardmarket_id (case-insensitiv, robust gegen Schreibweise) ─
+    const map = await pool.query(
+      `SELECT cardmarket_id, tcgplayer_name
+         FROM sealed_mapping
+        WHERE lower(cardmarket_slug) = lower($1)
+        LIMIT 1`,
+      [slug]
+    );
+
+    if (map.rows.length === 0 || !map.rows[0].cardmarket_id) {
+      // Produkt ist (noch) nicht gemappt → Widget zeigt neutralen Zustand
+      return res.status(404).json({ error: "PRODUCT_NOT_MAPPED", slug });
     }
-    var n = parseFloat(s);
-    return isNaN(n) ? null : n;
-  }
 
-  // ── Theme ────────────────────────────────────────────────────────────
-  // Default = dezent, neutral. Wird vom Shop-Theme (DB) überschrieben.
-  var DEFAULT_THEME = {
-    accent: "#111111",        // Akzent (Linien, Hervorhebung)
-    text: "#1a1a1a",          // Haupttext
-    muted: "#8a8a8a",         // Labels / Sekundärtext
-    bg: "transparent",        // Hintergrund der Karte
-    border: "#e6e6e6",        // Rahmen / Trennlinien
-    radius: "10px",           // Eckenradius
-    font: "inherit",          // Schriftart (inherit = Shop-Schrift übernehmen)
-    layout: "inline",         // "inline" (schlanke Zeile) | "card" (kleine Karte)
-    label: "Marktpreis",      // Überschrift links
-    brand: "CardPulse",       // Markenhinweis rechts
-    showBrand: true,          // Markenhinweis anzeigen?
-    showAverages: true,       // 7/30-Tage-Schnitt zeigen?
-    cheaperText: "Du sparst", // Text wenn Shop günstiger ist
-    note: ""                  // optionaler Fußnoten-Text
-  };
+    const cardmarketId = map.rows[0].cardmarket_id;
+    const productName = map.rows[0].tcgplayer_name;
 
-  function mergeTheme(t) {
-    var out = {};
-    for (var k in DEFAULT_THEME) out[k] = DEFAULT_THEME[k];
-    if (t) for (var j in t) if (t[j] != null) out[j] = t[j];
-    return out;
-  }
+    // ── 3. Cache-Check ─────────────────────────────────────────────────
+    let payload = null;
+    let cacheHit = false;
 
-  var STYLE_ID = "cp-shop-style";
-  function injectStyle(th) {
-    if (document.getElementById(STYLE_ID)) return;
-    var css =
-      ".cp-w{font-family:" + th.font + ";color:" + th.text + ";box-sizing:border-box;" +
-        "border:1px solid " + th.border + ";border-radius:" + th.radius + ";background:" + th.bg + ";" +
-        "padding:12px 14px;margin:14px 0;max-width:100%;font-size:14px;line-height:1.4}" +
-      ".cp-w *{box-sizing:border-box}" +
-      ".cp-w-top{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px}" +
-      ".cp-w-label{font-size:11px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;color:" + th.muted + "}" +
-      ".cp-w-brand{font-size:10px;color:" + th.muted + ";opacity:.8}" +
-      ".cp-w-brand b{color:" + th.accent + ";font-weight:600}" +
-      ".cp-w-row{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap}" +
-      ".cp-w-cmp{font-size:13px;color:" + th.muted + "}" +
-      ".cp-w-cmp b{color:" + th.text + ";font-weight:600;font-size:15px}" +
-      ".cp-w-save{font-size:12px;font-weight:600;color:#1a8a4a;background:rgba(26,138,74,.1);" +
-        "padding:2px 8px;border-radius:999px;white-space:nowrap}" +
-      ".cp-w-over{font-size:12px;color:" + th.muted + "}" +
-      ".cp-w-trend{display:flex;gap:16px;font-size:11px;color:" + th.muted + ";margin-top:8px;" +
-        "border-top:1px solid " + th.border + ";padding-top:8px}" +
-      ".cp-w-trend .v{color:" + th.text + ";font-weight:600}" +
-      ".cp-w-trend .up{color:#1a8a4a;font-weight:600}" +
-      ".cp-w-trend .dn{color:#c4341a;font-weight:600}" +
-      ".cp-w-note{font-size:10px;color:" + th.muted + ";margin-top:6px;opacity:.85}" +
-      ".cp-w--card{padding:16px}";
-    var s = document.createElement("style");
-    s.id = STYLE_ID;
-    s.appendChild(document.createTextNode(css));
-    document.head.appendChild(s);
-  }
+    const cached = await pool.query(
+      "SELECT payload, fetched_at FROM price_cache WHERE cardmarket_id = $1",
+      [cardmarketId]
+    );
 
-  function render(container, data, shopPriceRaw) {
-    var th = mergeTheme(data.theme);
-    injectStyle(th);
-
-    var p = data.price || {};
-    var cm = p.lowest;
-    var shopPrice = parseShopPrice(shopPriceRaw);
-
-    var card = document.createElement("div");
-    card.className = "cp-w" + (th.layout === "card" ? " cp-w--card" : "");
-
-    // Kopfzeile: Label links, Marke rechts
-    var top = '<div class="cp-w-top"><span class="cp-w-label">' + esc(th.label) + "</span>";
-    if (th.showBrand) {
-      top += '<span class="cp-w-brand">via <b>' + esc(th.brand) + "</b></span>";
-    }
-    top += "</div>";
-
-    // Hauptzeile: Cardmarket-Preis + Spar-Hinweis (NUR wenn Shop günstiger)
-    var row = '<div class="cp-w-row">';
-    row += '<span class="cp-w-cmp">Cardmarket ab <b>' + fmtEUR(cm) + "</b></span>";
-    if (shopPrice != null && cm != null) {
-      var diff = cm - shopPrice;
-      if (diff > 0.01) {
-        row += '<span class="cp-w-save">' + esc(th.cheaperText) + " " + fmtEUR(diff) + "</span>";
+    if (cached.rows.length > 0) {
+      const age = Date.now() - new Date(cached.rows[0].fetched_at).getTime();
+      if (age < CACHE_TTL_MS) {
+        const cp = cached.rows[0].payload;
+        // Nur nutzen, wenn ein echter Preis drin ist (kein alter null-Eintrag)
+        if (cp && (cp.lowest != null || cp.avg30d != null || cp.avg7d != null)) {
+          payload = cp;
+          cacheHit = true;
+        }
       }
-      // teurer-Fall: bewusst KEIN Hinweis – nur der Marktpreis steht da.
-    }
-    row += "</div>";
-
-    var html = top + row;
-
-    // Durchschnitte als Abweichung des aktuellen Preises vom 7-/30-Tage-Schnitt.
-    // Ehrlich aus vorhandenen TCGGO-Daten (kein erfundener Trend).
-    if (th.showAverages && cm != null && (p.avg7d != null || p.avg30d != null)) {
-      html += '<div class="cp-w-trend">';
-      if (p.avg7d != null)  html += "<span>vs. 7-Tage Ø: " + pctTag(cm, p.avg7d) + "</span>";
-      if (p.avg30d != null) html += "<span>vs. 30-Tage Ø: " + pctTag(cm, p.avg30d) + "</span>";
-      html += "</div>";
     }
 
-    // Fußnote (optional, aus Theme)
-    if (th.note) {
-      html += '<div class="cp-w-note">' + esc(th.note) + "</div>";
+    // ── Cache miss → TCGGO holen ───────────────────────────────────────
+    if (!payload) {
+      const product = await tcggo.fetchProductByCardmarketId(cardmarketId);
+      if (!product) {
+        return res.status(404).json({ error: "PRODUCT_NOT_FOUND_UPSTREAM" });
+      }
+      payload = tcggo.normalizePrices(product);
+
+      // in Cache schreiben (upsert)
+      await pool.query(
+        `INSERT INTO price_cache (cardmarket_id, payload, fetched_at)
+              VALUES ($1, $2, NOW())
+         ON CONFLICT (cardmarket_id)
+         DO UPDATE SET payload = $2, fetched_at = NOW()`,
+        [cardmarketId, payload]
+      );
     }
 
-    card.innerHTML = html;
-    container.innerHTML = "";
-    container.appendChild(card);
-  }
+    // ── 4. Zähler + optionales Usage-Log ───────────────────────────────
+    await incrementUsage(req.shop.id);
+    pool
+      .query(
+        `INSERT INTO shop_usage (shop_key_id, cardmarket_id, cache_hit)
+              VALUES ($1, $2, $3)`,
+        [req.shop.id, cardmarketId, cacheHit]
+      )
+      .catch(() => {}); // Log-Fehler nie den Request killen lassen
 
-  // Abweichung des aktuellen Preises vom Durchschnitt, als Pillen-Text.
-  // current > avg  → Preis liegt über dem Schnitt (grün ↗), sonst (rot ↘).
-  function pctTag(current, avg) {
-    if (current == null || avg == null || avg === 0) return '<span class="v">–</span>';
-    var pct = ((current - avg) / avg) * 100;
-    var rounded = Math.round(pct * 10) / 10;
-    if (Math.abs(rounded) < 0.05) return '<span class="v">±0 %</span>';
-    var cls = rounded > 0 ? "up" : "dn";
-    var arrow = rounded > 0 ? "↗" : "↘";
-    var sign = rounded > 0 ? "+" : "";
-    return '<span class="' + cls + '">' + arrow + " " + sign + rounded.toLocaleString("de-DE") + " %</span>";
-  }
-
-  function esc(s) {
-    return String(s == null ? "" : s).replace(/[&<>"]/g, function (c) {
-      return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c];
+    // ── Antwort ────────────────────────────────────────────────────────
+    res.json({
+      product: {
+        name: payload.name || productName,
+        slug,
+        episode: payload.episode || null,
+        image: payload.image || null,
+      },
+      price: {
+        currency: payload.currency || "EUR",
+        lowest: payload.lowest,      // primärer Vergleichswert (alle Länder)
+        lowestDE: payload.lowestDE,  // optional: nur deutsche Verkäufer
+        avg7d: payload.avg7d,
+        avg30d: payload.avg30d,
+      },
+      theme: req.shop.theme || null,   // pro-Shop-Design (oder null = Default)
+      meta: {
+        source: "cardmarket",
+        cacheHit,
+        used: req.shopUsed + 1,
+        limit: req.shop.request_limit,
+        plan: req.shop.plan,
+      },
     });
+  } catch (err) {
+    console.error("[/widget/sealed]", err.message);
+    res.status(500).json({ error: "SERVER_ERROR", message: err.message });
   }
+});
 
-  function init() {
-    var container = document.getElementById("cardpulse-widget");
-    if (!container || !SHOP_KEY) return;
-
-    var slug = container.getAttribute("data-slug");
-    var shopPrice = container.getAttribute("data-shop-price");
-    if (!slug) { container.style.display = "none"; return; }
-
-    fetch(API_BASE + "/widget/sealed?slug=" + encodeURIComponent(slug), {
-      headers: { "X-Shop-Key": SHOP_KEY },
-    })
-      .then(function (r) {
-        return r.json().then(function (j) { return { ok: r.ok, body: j }; });
-      })
-      .then(function (res) {
-        if (res.ok) render(container, res.body, shopPrice);
-        else container.style.display = "none"; // bei Fehler still verbergen
-      })
-      .catch(function () { container.style.display = "none"; });
-  }
-
-  if (document.readyState === "loading") {
-    document.addEventListener("DOMContentLoaded", init);
-  } else {
-    init();
-  }
-})();
+module.exports = router;
