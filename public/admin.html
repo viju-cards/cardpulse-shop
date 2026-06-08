@@ -219,6 +219,7 @@
 
     <div class="nav-label">Shops</div>
     <div class="nav-item" data-sec="key"><span class="nav-dot"></span>Shop-Key erstellen</div>
+    <div class="nav-item" data-sec="theme"><span class="nav-dot"></span>Widget-Design</div>
 
     <div class="nav-label">System</div>
     <div class="nav-item" data-sec="lists"><span class="nav-dot"></span>Übersichten</div>
@@ -360,6 +361,78 @@
       </div>
     </section>
 
+    <!-- THEME -->
+    <section class="section" data-sec="theme">
+      <div class="panel">
+        <div class="panel-head"><h2>Widget-Design</h2><span class="panel-num">pro Shop</span></div>
+        <p class="panel-hint">Gestalte das Widget passend zum Corporate Design des Shops. Links die Shop-ID laden, anpassen, speichern. Die Vorschau aktualisiert sich live.</p>
+
+        <div class="field-row">
+          <div class="field">
+            <label class="lbl">Shop-ID (aus „Übersichten" → Keys)</label>
+            <input class="in" id="thShopId" placeholder="z.B. 3">
+          </div>
+          <div class="field" style="display:flex;align-items:flex-end;gap:8px">
+            <button class="btn ghost" style="margin:0" onclick="loadTheme()">Laden</button>
+            <button class="btn" style="margin:0" onclick="saveTheme()">Speichern</button>
+          </div>
+        </div>
+
+        <div class="field-row">
+          <div class="field"><label class="lbl">Layout</label>
+            <select class="in" id="th_layout" onchange="previewTheme()">
+              <option value="inline">Inline (schlanke Zeile)</option>
+              <option value="card">Karte (etwas mehr Rahmen)</option>
+            </select></div>
+          <div class="field"><label class="lbl">Schriftart (CSS, leer = Shop-Schrift)</label>
+            <input class="in" id="th_font" placeholder="inherit" oninput="previewTheme()"></div>
+        </div>
+
+        <div class="field-row">
+          <div class="field"><label class="lbl">Akzentfarbe</label>
+            <input class="in" id="th_accent" placeholder="#111111" oninput="previewTheme()"></div>
+          <div class="field"><label class="lbl">Textfarbe</label>
+            <input class="in" id="th_text" placeholder="#1a1a1a" oninput="previewTheme()"></div>
+        </div>
+        <div class="field-row">
+          <div class="field"><label class="lbl">Sekundärtext / Labels</label>
+            <input class="in" id="th_muted" placeholder="#8a8a8a" oninput="previewTheme()"></div>
+          <div class="field"><label class="lbl">Rahmenfarbe</label>
+            <input class="in" id="th_border" placeholder="#e6e6e6" oninput="previewTheme()"></div>
+        </div>
+        <div class="field-row">
+          <div class="field"><label class="lbl">Hintergrund</label>
+            <input class="in" id="th_bg" placeholder="transparent" oninput="previewTheme()"></div>
+          <div class="field"><label class="lbl">Eckenradius</label>
+            <input class="in" id="th_radius" placeholder="10px" oninput="previewTheme()"></div>
+        </div>
+        <div class="field-row">
+          <div class="field"><label class="lbl">Überschrift (Label)</label>
+            <input class="in" id="th_label" placeholder="Marktpreis" oninput="previewTheme()"></div>
+          <div class="field"><label class="lbl">Spar-Text</label>
+            <input class="in" id="th_cheaper" placeholder="Du sparst" oninput="previewTheme()"></div>
+        </div>
+        <div class="field">
+          <label class="lbl">Fußnote (optional)</label>
+          <input class="in" id="th_note" placeholder="z.B. Marktpreis über alle Sprachversionen" oninput="previewTheme()">
+        </div>
+        <div class="field-row">
+          <div class="field"><label class="lbl">Markenhinweis „via CardPulse"</label>
+            <select class="in" id="th_showBrand" onchange="previewTheme()">
+              <option value="true">anzeigen</option><option value="false">ausblenden</option>
+            </select></div>
+          <div class="field"><label class="lbl">Abweichung vom 7/30-Tage-Schnitt</label>
+            <select class="in" id="th_showAvg" onchange="previewTheme()">
+              <option value="true">anzeigen</option><option value="false">ausblenden</option>
+            </select></div>
+        </div>
+
+        <label class="lbl" style="margin-top:8px">Live-Vorschau</label>
+        <div id="themePreview" style="background:#f3f3f3;border-radius:10px;padding:20px;margin-top:6px"></div>
+        <pre class="out" id="thOut"></pre>
+      </div>
+    </section>
+
     <!-- LISTS -->
     <section class="section" data-sec="lists">
       <div class="panel">
@@ -378,7 +451,7 @@
 
 <script>
   // ── Navigation ──
-  var SEC_TITLES={set:['Daten','Set-Import'],single:['Daten','Produkt anlegen'],batch:['Daten','Batch-Import'],tcgid:['Daten','tcg_id nachziehen'],key:['Shops','Shop-Key erstellen'],lists:['System','Übersichten']};
+  var SEC_TITLES={set:['Daten','Set-Import'],single:['Daten','Produkt anlegen'],batch:['Daten','Batch-Import'],tcgid:['Daten','tcg_id nachziehen'],key:['Shops','Shop-Key erstellen'],theme:['Shops','Widget-Design'],lists:['System','Übersichten']};
   document.querySelectorAll('.nav-item').forEach(function(n){
     n.addEventListener('click',function(){
       var sec=n.dataset.sec;
@@ -685,6 +758,90 @@
         cell.innerHTML='<span class="ok-msg">✓ tcg_id '+tcgId+' gespeichert</span>';
       }
     }catch(e){ alert('Fehler: '+e.message); }
+  }
+
+  // ── Widget-Theme-Editor ──
+  function themeFromFields(){
+    return {
+      layout:document.getElementById('th_layout').value,
+      font:document.getElementById('th_font').value||'inherit',
+      accent:document.getElementById('th_accent').value||'#111111',
+      text:document.getElementById('th_text').value||'#1a1a1a',
+      muted:document.getElementById('th_muted').value||'#8a8a8a',
+      border:document.getElementById('th_border').value||'#e6e6e6',
+      bg:document.getElementById('th_bg').value||'transparent',
+      radius:document.getElementById('th_radius').value||'10px',
+      label:document.getElementById('th_label').value||'Marktpreis',
+      cheaperText:document.getElementById('th_cheaper').value||'Du sparst',
+      note:document.getElementById('th_note').value||'',
+      showBrand:document.getElementById('th_showBrand').value==='true',
+      showAverages:document.getElementById('th_showAvg').value==='true',
+      brand:'CardPulse'
+    };
+  }
+
+  function fieldsFromTheme(t){
+    t=t||{};
+    document.getElementById('th_layout').value=t.layout||'inline';
+    document.getElementById('th_font').value=t.font||'';
+    document.getElementById('th_accent').value=t.accent||'';
+    document.getElementById('th_text').value=t.text||'';
+    document.getElementById('th_muted').value=t.muted||'';
+    document.getElementById('th_border').value=t.border||'';
+    document.getElementById('th_bg').value=t.bg||'';
+    document.getElementById('th_radius').value=t.radius||'';
+    document.getElementById('th_label').value=t.label||'';
+    document.getElementById('th_cheaper').value=t.cheaperText||'';
+    document.getElementById('th_note').value=t.note||'';
+    document.getElementById('th_showBrand').value=(t.showBrand===false)?'false':'true';
+    document.getElementById('th_showAvg').value=(t.showAverages===false)?'false':'true';
+  }
+
+  function previewTheme(){
+    var th=themeFromFields();
+    // Demo-Daten: Shop 90€, Cardmarket 92,90€
+    var cm=92.90, shop=89.99, diff=cm-shop;
+    var card='<div style="box-sizing:border-box;font-family:'+th.font+';color:'+th.text+
+      ';border:1px solid '+th.border+';border-radius:'+th.radius+';background:'+th.bg+
+      ';padding:'+(th.layout==='card'?'16px':'12px 14px')+';font-size:14px;line-height:1.4">';
+    card+='<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">'+
+      '<span style="font-size:11px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;color:'+th.muted+'">'+esc(th.label)+'</span>';
+    if(th.showBrand) card+='<span style="font-size:10px;color:'+th.muted+';opacity:.8">via <b style="color:'+th.accent+';font-weight:600">'+esc(th.brand)+'</b></span>';
+    card+='</div>';
+    card+='<div style="display:flex;align-items:baseline;gap:10px;flex-wrap:wrap">'+
+      '<span style="font-size:13px;color:'+th.muted+'">Cardmarket ab <b style="color:'+th.text+';font-weight:600;font-size:15px">92,90 €</b></span>'+
+      '<span style="font-size:12px;font-weight:600;color:#1a8a4a;background:rgba(26,138,74,.1);padding:2px 8px;border-radius:999px">'+esc(th.cheaperText)+' 2,91 €</span></div>';
+    if(th.showAverages) card+='<div style="display:flex;gap:16px;font-size:11px;color:'+th.muted+';margin-top:8px;border-top:1px solid '+th.border+';padding-top:8px">'+
+      '<span>vs. 7-Tage Ø: <span style="color:#c4341a;font-weight:600">↘ -2,6 %</span></span>'+
+      '<span>vs. 30-Tage Ø: <span style="color:#1a8a4a;font-weight:600">↗ +2,1 %</span></span></div>';
+    if(th.note) card+='<div style="font-size:10px;color:'+th.muted+';margin-top:6px;opacity:.85">'+esc(th.note)+'</div>';
+    card+='</div>';
+    document.getElementById('themePreview').innerHTML=card;
+  }
+
+  function esc(s){return String(s==null?'':s).replace(/[&<>"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];});}
+
+  async function loadTheme(){
+    var id=document.getElementById('thShopId').value.trim();
+    if(!id){ alert('Shop-ID eingeben.'); return; }
+    try{
+      const r=await call('/admin/shop-theme?shopId='+encodeURIComponent(id),'GET');
+      if(r.body && r.body.id){
+        fieldsFromTheme(r.body.theme);
+        previewTheme();
+        show('thOut','Geladen: '+r.body.shop_name+(r.body.theme?' (eigenes Theme)':' (noch Standard)'));
+      } else { show('thOut',r.body); }
+    }catch(e){ show('thOut','Fehler: '+e.message); }
+  }
+
+  async function saveTheme(){
+    var id=document.getElementById('thShopId').value.trim();
+    if(!id){ alert('Shop-ID eingeben.'); return; }
+    try{
+      const r=await call('/admin/set-shop-theme','POST',{ shopId:id, theme:themeFromFields() });
+      if(r.body.updated){ show('thOut','✓ Theme gespeichert für Shop '+id); }
+      else show('thOut',r.body);
+    }catch(e){ show('thOut','Fehler: '+e.message); }
   }
 
   async function listProducts(){ const r=await call('/admin/products','GET'); show('lOut',r.body); }
