@@ -461,4 +461,38 @@ router.get("/cardmarket-price", async (req, res) => {
   }
 });
 
+// Theme eines Shops setzen/aktualisieren (pro-Shop-Design fürs Widget)
+router.post("/set-shop-theme", async (req, res) => {
+  const shopId = req.body.shopId;
+  const theme = req.body.theme; // JSON-Objekt oder null (= Default)
+  if (!shopId) return res.status(400).json({ error: "MISSING_SHOP_ID" });
+  try {
+    const r = await pool.query(
+      "UPDATE shop_keys SET theme = $2 WHERE id = $1",
+      [shopId, theme ? JSON.stringify(theme) : null]
+    );
+    res.json({ updated: r.rowCount, shopId });
+  } catch (err) {
+    console.error("[/admin/set-shop-theme]", err.message);
+    res.status(500).json({ error: "SERVER_ERROR", message: err.message });
+  }
+});
+
+// Theme + Eckdaten eines Shops lesen (zum Bearbeiten im Admin)
+router.get("/shop-theme", async (req, res) => {
+  const shopId = req.query.shopId;
+  if (!shopId) return res.status(400).json({ error: "MISSING_SHOP_ID" });
+  try {
+    const { rows } = await pool.query(
+      "SELECT id, shop_name, theme FROM shop_keys WHERE id = $1",
+      [shopId]
+    );
+    if (rows.length === 0) return res.status(404).json({ error: "NOT_FOUND" });
+    res.json(rows[0]);
+  } catch (err) {
+    console.error("[/admin/shop-theme]", err.message);
+    res.status(500).json({ error: "SERVER_ERROR", message: err.message });
+  }
+});
+
 module.exports = router;
