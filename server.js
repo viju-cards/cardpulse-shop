@@ -30,7 +30,15 @@ app.use((req, res, next) => {
 app.use(express.json());
 
 // ── Health-Check (für Render + cron-job Keepalive) ───────────────────────
+// /health  → JSON, für Monitoring/Statusabfragen
+// /ping    → minimaler Klartext "ok", ideal für Keepalive-Pings
+//            (kann nie "Ausgabe zu groß" auslösen, kein JSON-Overhead)
 app.get("/health", (_req, res) => res.json({ ok: true }));
+app.get("/ping", (_req, res) => {
+  res.set("Cache-Control", "no-store");
+  res.type("text/plain").send("ok");
+});
+app.head("/ping", (_req, res) => res.sendStatus(200)); // HEAD: noch leichter
 
 // ── Statisches Widget-Script ─────────────────────────────────────────────
 app.use(express.static("public"));
