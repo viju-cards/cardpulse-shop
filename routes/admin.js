@@ -365,14 +365,24 @@ router.get("/search-tcgid", async (req, res) => {
   try {
     const { candidates, quota } = await justtcg.searchSealed(q);
 
-    // Bereits in der DB vergebene tcgplayer_ids holen → aus Treffern entfernen,
-    // damit dieselbe ID nicht versehentlich zweimal zugewiesen wird.
+    // Bereits in der DB vergebene tcgplayer_ids holen → mit Produktname,
+    // damit nachvollziehbar ist, wem eine ID schon gehört.
     const usedRows = await pool.query(
-      "SELECT tcg_player_id FROM sealed_mapping WHERE tcg_player_id IS NOT NULL"
+      "SELECT tcg_player_id, tcgplayer_name FROM sealed_mapping WHERE tcg_player_id IS NOT NULL"
     );
-    const used = new Set(usedRows.rows.map((r) => String(r.tcg_player_id)));
+    const usedMap = new Map(
+      usedRows.rows.map((r) => [String(r.tcg_player_id), r.tcgplayer_name])
+    );
 
-    const free = candidates.filter((c) => !used.has(String(c.tcgplayerId)));
+    const free = candidates.filter((c) => !usedMap.has(String(c.tcgplayerId)));
+    // Liste der ausgeblendeten (vergebenen) Treffer inkl. Zielprodukt.
+    const usedHits = candidates
+      .filter((c) => usedMap.has(String(c.tcgplayerId)))
+      .map((c) => ({
+        tcgplayerId: c.tcgplayerId,
+        name: c.name,
+        assignedTo: usedMap.get(String(c.tcgplayerId)),
+      }));
     const removedUsed = candidates.length - free.length;
 
     const filtered = justtcg.filterStrict(q, free);
@@ -382,6 +392,7 @@ router.get("/search-tcgid", async (req, res) => {
       allCandidates: free,         // volle Sealed-Liste, aber ohne schon vergebene
       hidden: free.length - filtered.length,
       removedUsed,                 // wie viele wegen "schon vergeben" entfernt wurden
+      usedHits,                    // welche das waren + wem die ID gehört
       quota,
     });
   } catch (err) {
