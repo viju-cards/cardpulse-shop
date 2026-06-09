@@ -158,6 +158,29 @@
   .btn.sm{padding:6px 13px;font-size:11px;margin:0;box-shadow:none}
   .btn-row{display:flex;gap:10px;flex-wrap:wrap}
 
+  /* Button-Ladezustand */
+  .btn.is-loading{position:relative;color:transparent !important;pointer-events:none;opacity:.85}
+  .btn.is-loading::after{content:"";position:absolute;width:15px;height:15px;top:50%;left:50%;
+    margin:-7.5px 0 0 -7.5px;border:2px solid rgba(255,255,255,.4);border-top-color:#fff;
+    border-radius:50%;animation:cp-spin .6s linear infinite}
+  .btn.ghost.is-loading::after{border-color:rgba(108,99,255,.35);border-top-color:var(--accent)}
+  @keyframes cp-spin{to{transform:rotate(360deg)}}
+
+  /* Toast-Benachrichtigungen */
+  #cp-toasts{position:fixed;top:20px;right:20px;z-index:9999;display:flex;flex-direction:column;gap:10px;pointer-events:none}
+  .cp-toast{min-width:240px;max-width:360px;padding:13px 16px;border-radius:11px;font-size:14px;
+    background:var(--bg-elev2);border:1px solid var(--line);color:var(--text);
+    box-shadow:0 8px 30px rgba(0,0,0,.4);display:flex;align-items:flex-start;gap:10px;
+    animation:cp-toast-in .25s ease;pointer-events:auto}
+  .cp-toast.out{animation:cp-toast-out .25s ease forwards}
+  .cp-toast .ic{font-size:16px;line-height:1.3;flex:none}
+  .cp-toast.ok{border-color:rgba(0,212,170,.4)} .cp-toast.ok .ic{color:#00d4aa}
+  .cp-toast.err{border-color:rgba(255,90,90,.4)} .cp-toast.err .ic{color:#ff5a5a}
+  .cp-toast.info .ic{color:var(--accent)}
+  .cp-toast .msg{flex:1;line-height:1.45}
+  @keyframes cp-toast-in{from{opacity:0;transform:translateX(20px)}to{opacity:1;transform:translateX(0)}}
+  @keyframes cp-toast-out{to{opacity:0;transform:translateX(20px)}}
+
   /* ── Output ── */
   pre.out{
     display:none;margin:16px 0 0;background:var(--bg);border:1px solid var(--line);
@@ -199,6 +222,7 @@
 </style>
 </head>
 <body>
+<div id="cp-toasts"></div>
 <div class="shell">
 
   <!-- ── Sidebar ── -->
@@ -250,7 +274,7 @@
           <label class="lbl">Set suchen (Name oder Code)</label>
           <input class="in" id="epSearch" placeholder="z.B. Phantasmal Flames, Destined Rivals, PFL …">
         </div>
-        <button class="btn" onclick="findEpisodes()">Sets suchen</button>
+        <button class="btn" onclick="withLoading(this,findEpisodes)">Sets suchen</button>
         <pre class="out" id="epOut"></pre>
 
         <div id="epProducts" style="display:none;margin-top:20px">
@@ -265,7 +289,7 @@
           </div>
           <p class="panel-hint" id="setStatus" style="margin:0 0 12px"></p>
           <table class="tbl" id="previewTable"></table>
-          <div class="btn-row"><button class="btn" onclick="importSet()" style="margin-top:14px">Ausgewählte importieren</button></div>
+          <div class="btn-row"><button class="btn" onclick="withLoading(this,importSet)" style="margin-top:14px">Ausgewählte importieren</button></div>
           <pre class="out" id="setImportOut"></pre>
         </div>
       </div>
@@ -290,7 +314,7 @@
             <input class="in" id="pCmId" placeholder="877280">
           </div>
         </div>
-        <button class="btn" onclick="addProduct()">Produkt speichern</button>
+        <button class="btn" onclick="withLoading(this,addProduct)">Produkt speichern</button>
         <pre class="out" id="pOut"></pre>
       </div>
     </section>
@@ -304,7 +328,7 @@
           <label class="lbl">Liste</label>
           <textarea class="in" id="bList" placeholder="slug;name oder slug;cmId&#10;destined-rivals-booster;Destined Rivals Booster&#10;paldea-evolved-booster;846729"></textarea>
         </div>
-        <button class="btn" onclick="batchImport()">Alle importieren</button>
+        <button class="btn" onclick="withLoading(this,batchImport)">Alle importieren</button>
         <pre class="out" id="bOut"></pre>
       </div>
     </section>
@@ -315,13 +339,13 @@
         <div class="panel-head"><h2>tcg_id nachziehen</h2><span class="panel-num">für CardPulse</span></div>
         <p class="panel-hint">Listet Sealed-Einträge ohne tcgplayer_id. Pro Eintrag einzeln bei JustTCG suchen (schont das 100/Tag-Limit), dann den passenden Sealed-Treffer wählen.</p>
         <div class="toolbar">
-          <button class="btn ghost" onclick="loadMissing()">Einträge ohne tcg_id laden</button>
+          <button class="btn ghost" onclick="withLoading(this,loadMissing)">Einträge ohne tcg_id laden</button>
           <span class="quota" id="quotaInfo"></span>
         </div>
         <div id="missingList"></div>
         <hr style="border:none;border-top:1px solid var(--line);margin:22px 0 0">
         <div class="toolbar" style="margin-top:18px">
-          <button class="btn ghost" onclick="loadNoMatch()">Als „kein TCG" markierte anzeigen</button>
+          <button class="btn ghost" onclick="withLoading(this,loadNoMatch)">Als „kein TCG" markierte anzeigen</button>
         </div>
         <div id="noMatchList"></div>
       </div>
@@ -356,7 +380,7 @@
             <input class="in" id="kOrigins" placeholder="https://cardcosmos.de, https://www.cardcosmos.de">
           </div>
         </div>
-        <button class="btn" onclick="createKey()">Key erstellen</button>
+        <button class="btn" onclick="withLoading(this,createKey)">Key erstellen</button>
         <pre class="out" id="kOut"></pre>
       </div>
     </section>
@@ -373,8 +397,8 @@
             <input class="in" id="thShopId" placeholder="z.B. 3">
           </div>
           <div class="field" style="display:flex;align-items:flex-end;gap:8px">
-            <button class="btn ghost" style="margin:0" onclick="loadTheme()">Laden</button>
-            <button class="btn" style="margin:0" onclick="saveTheme()">Speichern</button>
+            <button class="btn ghost" style="margin:0" onclick="withLoading(this,loadTheme)">Laden</button>
+            <button class="btn" style="margin:0" onclick="withLoading(this,saveTheme)">Speichern</button>
           </div>
         </div>
 
@@ -439,8 +463,8 @@
         <div class="panel-head"><h2>Übersichten</h2><span class="panel-num">DB-Stand</span></div>
         <p class="panel-hint">Aktueller Stand der gemappten Produkte und der angelegten Shop-Keys.</p>
         <div class="btn-row">
-          <button class="btn ghost" onclick="listProducts()">Produkte laden</button>
-          <button class="btn ghost" onclick="listKeys()">Keys laden</button>
+          <button class="btn ghost" onclick="withLoading(this,listProducts)">Produkte laden</button>
+          <button class="btn ghost" onclick="withLoading(this,listKeys)">Keys laden</button>
         </div>
         <pre class="out" id="lOut"></pre>
       </div>
@@ -474,12 +498,49 @@
     return { status:r.status, body:await r.json() };
   }
 
+  // Toast-Benachrichtigung (type: 'ok' | 'err' | 'info'), verschwindet von selbst.
+  function toast(msg, type){
+    type=type||'info';
+    var wrap=document.getElementById('cp-toasts');
+    if(!wrap) return;
+    var ic = type==='ok'?'✓' : type==='err'?'✕' : 'ℹ';
+    var el=document.createElement('div');
+    el.className='cp-toast '+type;
+    el.innerHTML='<span class="ic">'+ic+'</span><span class="msg"></span>';
+    el.querySelector('.msg').textContent=msg;
+    wrap.appendChild(el);
+    var ttl = type==='err' ? 5000 : 3200;
+    setTimeout(function(){
+      el.classList.add('out');
+      setTimeout(function(){ el.remove(); }, 260);
+    }, ttl);
+  }
+
+  // Führt fn() aus und zeigt solange einen Spinner im geklickten Button.
+  // Nutzung: onclick="withLoading(this, findEpisodes)"  oder mit Argumenten:
+  //          onclick="withLoading(this, ()=>loadSet(id))"
+  async function withLoading(btn, fn){
+    if(btn){ btn.classList.add('is-loading'); btn.disabled=true; }
+    try{ return await fn(); }
+    finally{ if(btn){ btn.classList.remove('is-loading'); btn.disabled=false; } }
+  }
+
   async function addProduct(){
     const body={ name:document.getElementById('pName').value||undefined,
                  slug:document.getElementById('pSlug').value,
                  cmId:document.getElementById('pCmId').value||undefined, force:true };
-    try{ const r=await call('/admin/add-product','POST',body); show('pOut',r.body); }
-    catch(e){ show('pOut','Fehler: '+e.message); }
+    if(!body.slug){ toast('Bitte einen Slug eingeben.','err'); return; }
+    try{
+      const r=await call('/admin/add-product','POST',body);
+      show('pOut',r.body);
+      if(r.status>=200&&r.status<300){
+        toast('Produkt gespeichert.','ok');
+        document.getElementById('pName').value='';
+        document.getElementById('pSlug').value='';
+        document.getElementById('pCmId').value='';
+      } else { toast('Speichern fehlgeschlagen.','err'); }
+    }
+    catch(e){ toast('Fehler: '+e.message,'err'); show('pOut','Fehler: '+e.message); }
   }
 
   async function createKey(){
@@ -487,8 +548,14 @@
     const body={ shop:document.getElementById('kShop').value,
                  email:document.getElementById('kEmail').value||undefined,
                  plan:document.getElementById('kPlan').value, origins };
-    try{ const r=await call('/admin/create-shop-key','POST',body); show('kOut',r.body); }
-    catch(e){ show('kOut','Fehler: '+e.message); }
+    if(!body.shop){ toast('Bitte einen Shop-Namen eingeben.','err'); return; }
+    try{
+      const r=await call('/admin/create-shop-key','POST',body);
+      show('kOut',r.body);
+      if(r.status>=200&&r.status<300){ toast('Shop-Key erstellt – Key wird nur jetzt angezeigt!','ok'); }
+      else { toast('Erstellen fehlgeschlagen.','err'); }
+    }
+    catch(e){ toast('Fehler: '+e.message,'err'); show('kOut','Fehler: '+e.message); }
   }
 
   async function findEpisodes(){
@@ -498,10 +565,11 @@
       if(r.body.episodes){
         const lines=r.body.episodes.slice(0,40).map(function(e){
           return '<div class="ep-line">ID '+e.id+' · '+e.name+(e.code?' ('+e.code+')':'')+(e.releasedAt?' · '+e.releasedAt:'')+
-            ' → <a href="#" class="lnk" onclick="loadSet('+e.id+');return false">Produkte laden</a></div>';
+            ' → <a href="#" class="lnk" onclick="this.textContent=\'lädt …\';loadSet('+e.id+');return false">Produkte laden</a></div>';
         });
         const el=document.getElementById('epOut');
         el.innerHTML=lines.join('')||'Keine Sets gefunden.';
+        if(lines.length===0) toast('Keine Sets gefunden.','info');
       } else show('epOut',r.body);
     }catch(e){ show('epOut','Fehler: '+e.message); }
   }
@@ -552,9 +620,26 @@
   async function importSet(){
     const items=_setProducts.filter(function(p){return p.include && p.slug && p.cardmarketId;})
       .map(function(p){ return { slug:p.slug.trim(), cmId:p.cardmarketId, tcgId:p.tcgplayerId, name:p.name }; });
-    if(items.length===0){ show('setImportOut','Nichts ausgewählt oder Slugs fehlen.'); return; }
-    try{ const r=await call('/admin/batch-import','POST',{ items }); show('setImportOut',r.body); }
-    catch(e){ show('setImportOut','Fehler: '+e.message); }
+    if(items.length===0){ toast('Nichts ausgewählt oder Slugs fehlen.','err'); return; }
+    try{
+      const r=await call('/admin/batch-import','POST',{ items });
+      if(r.status>=200 && r.status<300){
+        var n=(r.body && r.body.saved!=null)?r.body.saved:items.length;
+        var failed=(r.body && r.body.failed)?r.body.failed:0;
+        toast(n+' Produkt'+(n===1?'':'e')+' importiert'+(failed?(', '+failed+' fehlgeschlagen'):'')+'.', failed?'info':'ok');
+        // Vorschau, Liste und JSON leeren
+        _setProducts=[];
+        document.getElementById('epProducts').style.display='none';
+        var setStatus=document.getElementById('setStatus'); if(setStatus) setStatus.innerHTML='';
+        var epOut=document.getElementById('epOut'); if(epOut) epOut.innerHTML='';
+        var setImportOut=document.getElementById('setImportOut'); if(setImportOut) setImportOut.textContent='';
+        var pt=document.getElementById('previewTable'); if(pt) pt.innerHTML='';
+      } else {
+        toast('Import fehlgeschlagen.','err');
+        show('setImportOut',r.body);
+      }
+    }
+    catch(e){ toast('Fehler: '+e.message,'err'); show('setImportOut','Fehler: '+e.message); }
   }
 
   async function batchImport(){
@@ -565,8 +650,18 @@
       if(/^\d+$/.test(second)) return { slug, cmId: second };
       return { slug, name: second };
     });
-    try{ const r=await call('/admin/batch-import','POST',{ items }); show('bOut',r.body); }
-    catch(e){ show('bOut','Fehler: '+e.message); }
+    if(items.length===0){ toast('Keine Zeilen eingegeben.','err'); return; }
+    try{
+      const r=await call('/admin/batch-import','POST',{ items });
+      show('bOut',r.body);
+      if(r.status>=200&&r.status<300){
+        var n=(r.body&&r.body.saved!=null)?r.body.saved:items.length;
+        var f=(r.body&&r.body.failed)?r.body.failed:0;
+        toast(n+' importiert'+(f?(', '+f+' fehlgeschlagen'):'')+'.', f?'info':'ok');
+        if(!f) document.getElementById('bList').value='';
+      } else { toast('Import fehlgeschlagen.','err'); }
+    }
+    catch(e){ toast('Fehler: '+e.message,'err'); show('bOut','Fehler: '+e.message); }
   }
 
   var _missing=[];
@@ -786,8 +881,9 @@
         const cell=document.querySelector('#cand-'+i+' td');
         cell.dataset.open='0';
         cell.innerHTML='<span class="ok-msg">✓ tcg_id '+tcgId+' gespeichert</span>';
-      }
-    }catch(e){ alert('Fehler: '+e.message); }
+        toast('tcg_id '+tcgId+' zugewiesen.','ok');
+      } else { toast('Konnte nicht speichern.','err'); }
+    }catch(e){ toast('Fehler: '+e.message,'err'); }
   }
 
   // ── Widget-Theme-Editor ──
@@ -853,7 +949,7 @@
 
   async function loadTheme(){
     var id=document.getElementById('thShopId').value.trim();
-    if(!id){ alert('Shop-ID eingeben.'); return; }
+    if(!id){ toast('Bitte Shop-ID eingeben.','err'); return; }
     try{
       const r=await call('/admin/shop-theme?shopId='+encodeURIComponent(id),'GET');
       if(r.body && r.body.id){
@@ -866,12 +962,12 @@
 
   async function saveTheme(){
     var id=document.getElementById('thShopId').value.trim();
-    if(!id){ alert('Shop-ID eingeben.'); return; }
+    if(!id){ toast('Bitte Shop-ID eingeben.','err'); return; }
     try{
       const r=await call('/admin/set-shop-theme','POST',{ shopId:id, theme:themeFromFields() });
-      if(r.body.updated){ show('thOut','✓ Theme gespeichert für Shop '+id); }
-      else show('thOut',r.body);
-    }catch(e){ show('thOut','Fehler: '+e.message); }
+      if(r.body.updated){ show('thOut','✓ Theme gespeichert für Shop '+id); toast('Theme für Shop '+id+' gespeichert.','ok'); }
+      else { show('thOut',r.body); toast('Speichern fehlgeschlagen.','err'); }
+    }catch(e){ toast('Fehler: '+e.message,'err'); show('thOut','Fehler: '+e.message); }
   }
 
   async function listProducts(){ const r=await call('/admin/products','GET'); show('lOut',r.body); }
