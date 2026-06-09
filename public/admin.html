@@ -973,6 +973,37 @@
   async function listProducts(){ const r=await call('/admin/products','GET'); show('lOut',r.body); }
   async function listKeys(){ const r=await call('/admin/shop-keys','GET'); show('lOut',r.body); }
 
+  // ── Enter-Taste in Eingabefeldern löst die passende Aktion aus ──
+  // Verknüpft ein Feld mit einer Funktion. Wenn ein Button mitgegeben wird,
+  // läuft die Aktion über withLoading (zeigt also den Spinner wie ein echter Klick).
+  function bindEnter(fieldId, fn, btnSelector){
+    var el=document.getElementById(fieldId);
+    if(!el) return;
+    el.addEventListener('keydown', function(e){
+      if(e.key==='Enter'){
+        e.preventDefault();
+        var btn = btnSelector ? document.querySelector(btnSelector) : null;
+        if(btn){ withLoading(btn, fn); } else { fn(); }
+      }
+    });
+  }
+
+  window.addEventListener('load', function(){
+    // Set-Suche → Sets suchen
+    bindEnter('epSearch', findEpisodes, '[onclick*="findEpisodes"]');
+    // Produkt anlegen (alle drei Felder) → Produkt speichern
+    bindEnter('pName', addProduct, '[onclick*="addProduct"]');
+    bindEnter('pSlug', addProduct, '[onclick*="addProduct"]');
+    bindEnter('pCmId', addProduct, '[onclick*="addProduct"]');
+    // Shop-Key (Name/Email/Origins) → Key erstellen
+    bindEnter('kShop', createKey, '[onclick*="createKey"]');
+    bindEnter('kEmail', createKey, '[onclick*="createKey"]');
+    bindEnter('kOrigins', createKey, '[onclick*="createKey"]');
+    // Theme: Shop-ID → laden
+    bindEnter('thShopId', loadTheme, '[onclick*="loadTheme"]');
+    // (Batch-Textarea bewusst NICHT – dort braucht Enter den Zeilenumbruch.)
+  });
+
   // ── PWA: Service Worker registrieren (macht die App installierbar) ──
   if ('serviceWorker' in navigator) {
     window.addEventListener('load', function(){
