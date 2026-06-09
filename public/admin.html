@@ -403,13 +403,36 @@
         </div>
 
         <div class="field-row">
+          <div class="field"><label class="lbl">Schnellauswahl Größe</label>
+            <div class="btn-row" style="margin-top:2px">
+              <button class="btn ghost sm" onclick="applyPreset('kompakt')">Kompakt</button>
+              <button class="btn ghost sm" onclick="applyPreset('standard')">Standard</button>
+              <button class="btn ghost sm" onclick="applyPreset('schmal')">Schmal</button>
+            </div>
+          </div>
+          <div class="field"><label class="lbl">Max. Breite (px/%/leer = volle Breite)</label>
+            <input class="in" id="th_maxWidth" placeholder="z.B. 380px (leer = volle Breite)" oninput="previewTheme()"></div>
+        </div>
+
+        <div class="field-row">
           <div class="field"><label class="lbl">Layout</label>
             <select class="in" id="th_layout" onchange="previewTheme()">
               <option value="inline">Inline (schlanke Zeile)</option>
               <option value="card">Karte (etwas mehr Rahmen)</option>
             </select></div>
+          <div class="field"><label class="lbl">Größe</label>
+            <select class="in" id="th_size" onchange="previewTheme()">
+              <option value="standard">Standard</option>
+              <option value="kompakt">Kompakt (kleiner, enger)</option>
+            </select></div>
+        </div>
+
+        <div class="field-row">
           <div class="field"><label class="lbl">Schriftart (CSS, leer = Shop-Schrift)</label>
             <input class="in" id="th_font" placeholder="inherit" oninput="previewTheme()"></div>
+          <div class="field"><label class="lbl">&nbsp;</label>
+            <div></div></div>
+        </div>
         </div>
 
         <div class="field-row">
@@ -890,6 +913,8 @@
   function themeFromFields(){
     return {
       layout:document.getElementById('th_layout').value,
+      size:document.getElementById('th_size').value,
+      maxWidth:document.getElementById('th_maxWidth').value||'',
       font:document.getElementById('th_font').value||'inherit',
       accent:document.getElementById('th_accent').value||'#111111',
       text:document.getElementById('th_text').value||'#1a1a1a',
@@ -909,6 +934,8 @@
   function fieldsFromTheme(t){
     t=t||{};
     document.getElementById('th_layout').value=t.layout||'inline';
+    document.getElementById('th_size').value=t.size||'standard';
+    document.getElementById('th_maxWidth').value=t.maxWidth||'';
     document.getElementById('th_font').value=t.font||'';
     document.getElementById('th_accent').value=t.accent||'';
     document.getElementById('th_text').value=t.text||'';
@@ -923,21 +950,46 @@
     document.getElementById('th_showAvg').value=(t.showAverages===false)?'false':'true';
   }
 
+  // Schnellauswahl: setzt Größe/Breite-Felder und aktualisiert die Vorschau.
+  function applyPreset(name){
+    if(name==='kompakt'){
+      document.getElementById('th_size').value='kompakt';
+      document.getElementById('th_maxWidth').value='';
+      document.getElementById('th_layout').value='inline';
+    } else if(name==='standard'){
+      document.getElementById('th_size').value='standard';
+      document.getElementById('th_maxWidth').value='';
+      document.getElementById('th_layout').value='inline';
+    } else if(name==='schmal'){
+      document.getElementById('th_size').value='kompakt';
+      document.getElementById('th_maxWidth').value='320px';
+      document.getElementById('th_layout').value='card';
+    }
+    previewTheme();
+    toast('Preset „'+name+'" angewendet – nicht vergessen zu speichern.','info');
+  }
+
+  var _SIZE_PRESETS={
+    kompakt:{pad:'9px 11px',cardPad:'12px',fs:'13px',gap:'8px',trendFs:'10px'},
+    standard:{pad:'12px 14px',cardPad:'16px',fs:'14px',gap:'10px',trendFs:'11px'}
+  };
+
   function previewTheme(){
     var th=themeFromFields();
-    // Demo-Daten: Shop 90€, Cardmarket 92,90€
-    var cm=92.90, shop=89.99, diff=cm-shop;
+    var sz=_SIZE_PRESETS[th.size]||_SIZE_PRESETS.standard;
+    var pad=th.layout==='card'?sz.cardPad:sz.pad;
+    var maxW=th.maxWidth?th.maxWidth:'100%';
     var card='<div style="box-sizing:border-box;font-family:'+th.font+';color:'+th.text+
       ';border:1px solid '+th.border+';border-radius:'+th.radius+';background:'+th.bg+
-      ';padding:'+(th.layout==='card'?'16px':'12px 14px')+';font-size:14px;line-height:1.4">';
-    card+='<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">'+
+      ';padding:'+pad+';font-size:'+sz.fs+';line-height:1.4;max-width:'+maxW+'">';
+    card+='<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:'+sz.gap+'">'+
       '<span style="font-size:11px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;color:'+th.muted+'">'+esc(th.label)+'</span>';
     if(th.showBrand) card+='<span style="font-size:10px;color:'+th.muted+';opacity:.8">via <b style="color:'+th.accent+';font-weight:600">'+esc(th.brand)+'</b></span>';
     card+='</div>';
     card+='<div style="display:flex;align-items:baseline;gap:10px;flex-wrap:wrap">'+
       '<span style="font-size:13px;color:'+th.muted+'">Cardmarket ab <b style="color:'+th.text+';font-weight:600;font-size:15px">92,90 €</b></span>'+
       '<span style="font-size:12px;font-weight:600;color:#1a8a4a;background:rgba(26,138,74,.1);padding:2px 8px;border-radius:999px">'+esc(th.cheaperText)+' 2,91 €</span></div>';
-    if(th.showAverages) card+='<div style="display:flex;gap:16px;font-size:11px;color:'+th.muted+';margin-top:8px;border-top:1px solid '+th.border+';padding-top:8px">'+
+    if(th.showAverages) card+='<div style="display:flex;gap:16px;font-size:'+sz.trendFs+';color:'+th.muted+';margin-top:8px;border-top:1px solid '+th.border+';padding-top:8px">'+
       '<span>vs. 7-Tage Ø: <span style="color:#c4341a;font-weight:600">↘ -2,6 %</span></span>'+
       '<span>vs. 30-Tage Ø: <span style="color:#1a8a4a;font-weight:600">↗ +2,1 %</span></span></div>';
     if(th.note) card+='<div style="font-size:10px;color:'+th.muted+';margin-top:6px;opacity:.85">'+esc(th.note)+'</div>';
