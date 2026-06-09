@@ -6,7 +6,7 @@
 <title>CardPulse Shop · Admin</title>
 <link rel="manifest" href="/manifest.json">
 <meta name="theme-color" content="#09090f">
-<link rel="apple-touch-icon" href="/icon-192.png"> 
+<link rel="apple-touch-icon" href="/icon-192.png">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="CP Admin">
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -672,6 +672,7 @@
         all:r.body.allCandidates||[],
         hidden:r.body.hidden||0,
         removedUsed:r.body.removedUsed||0,
+        usedHits:r.body.usedHits||[],
         showingAll:false
       };
       renderCands(i);
@@ -694,7 +695,11 @@
       if(st.hidden>0) head+='<a href="#" class="lnk" onclick="setAll('+i+',true);return false">Alle anzeigen ('+st.all.length+', +'+st.hidden+' ausgeblendet)</a>';
     }
     if(st.removedUsed>0){
-      head+='<span class="panel-hint" style="margin:0;color:var(--text-faint)">'+st.removedUsed+' bereits vergeben</span>';
+      if(st.usedHits&&st.usedHits.length){
+        head+='<a href="#" class="lnk" style="color:var(--text-faint)" onclick="toggleUsed('+i+');return false">'+st.removedUsed+' bereits vergeben</a>';
+      } else {
+        head+='<span class="panel-hint" style="margin:0;color:var(--text-faint)">'+st.removedUsed+' bereits vergeben</span>';
+      }
     }
     // Cardmarket-Preis-Bereich
     if(st.cmPrice!=null){
@@ -705,7 +710,16 @@
     head+='<a href="#" class="lnk" style="margin-left:auto" onclick="closeCand('+i+');return false">Schließen ✕</a></div>';
 
     if(list.length===0){
-      cell.innerHTML=head+'<div class="panel-hint" style="color:var(--danger);margin:6px 0">Keine '+(st.showingAll?'':'passenden ')+'Sealed-Treffer.'+(!st.showingAll&&st.all.length>0?' Versuch „Alle anzeigen".':'')+'</div>';
+      var emptyHtml=head+'<div class="panel-hint" style="color:var(--danger);margin:6px 0">Keine '+(st.showingAll?'':'passenden ')+'Sealed-Treffer.'+(!st.showingAll&&st.all.length>0?' Versuch „Alle anzeigen".':'')+'</div>';
+      if(st.showUsed&&st.usedHits&&st.usedHits.length){
+        emptyHtml+='<div style="margin:4px 0 10px;padding:10px 12px;background:rgba(255,255,255,.03);border-radius:8px;border:1px solid var(--border)">';
+        emptyHtml+='<div class="panel-hint" style="margin:0 0 6px">Bereits vergebene IDs aus dieser Suche:</div>';
+        st.usedHits.forEach(function(u){
+          emptyHtml+='<div style="font-size:13px;padding:3px 0;color:var(--text-dim)"><code>'+u.tcgplayerId+'</code> '+esc(u.name)+' &rarr; <b style="color:var(--text)">'+esc(u.assignedTo||'?')+'</b></div>';
+        });
+        emptyHtml+='</div>';
+      }
+      cell.innerHTML=emptyHtml;
       return;
     }
     var html='<div style="padding:4px 0 10px">';
@@ -716,7 +730,23 @@
         '<span><b>'+c.name+'</b> · '+(c.setName||'')+' · <code>'+c.tcgplayerId+'</code> · $'+(c.price!=null?c.price:'-')+'</span></div>';
     });
     html+='</div>';
+    // Aufklappbare Liste der bereits vergebenen IDs (welchem Produkt sie gehören)
+    if(st.showUsed&&st.usedHits&&st.usedHits.length){
+      html+='<div style="margin:4px 0 10px;padding:10px 12px;background:rgba(255,255,255,.03);border-radius:8px;border:1px solid var(--border)">';
+      html+='<div class="panel-hint" style="margin:0 0 6px">Bereits vergebene IDs aus dieser Suche:</div>';
+      st.usedHits.forEach(function(u){
+        html+='<div style="font-size:13px;padding:3px 0;color:var(--text-dim)"><code>'+u.tcgplayerId+'</code> '+esc(u.name)+' &rarr; <b style="color:var(--text)">'+esc(u.assignedTo||'?')+'</b></div>';
+      });
+      html+='</div>';
+    }
     cell.innerHTML=head+html;
+  }
+
+  function toggleUsed(i){
+    var st=_candCache[i];
+    if(!st) return;
+    st.showUsed=!st.showUsed;
+    renderCands(i);
   }
 
   // USD-Treffer grob in EUR umrechnen und mit Cardmarket-Preis vergleichen.
