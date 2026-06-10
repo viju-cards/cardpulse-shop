@@ -348,6 +348,19 @@
           <button class="btn ghost" onclick="withLoading(this,loadNoMatch)">Als „kein TCG" markierte anzeigen</button>
         </div>
         <div id="noMatchList"></div>
+
+        <hr style="border:none;border-top:1px solid var(--line);margin:22px 0 0">
+        <div style="margin-top:18px">
+          <h3 style="font-family:var(--font-display);font-size:18px;margin:0 0 4px">TCGplayer-Preise</h3>
+          <p class="panel-hint" style="margin-top:0">Holt für Produkte mit tcg_id den aktuellen TCGplayer-Preis (USD) und speichert ihn. Wird im Widget angezeigt, wenn er höher als der Shop-Preis ist. Batchweise wegen des 100/Tag-Limits – die ältesten/fehlenden zuerst.</p>
+          <div class="toolbar">
+            <button class="btn ghost" onclick="withLoading(this,tcgPriceStats)">Status anzeigen</button>
+            <button class="btn" onclick="withLoading(this,()=>refreshTcgPrices(10))">10 Preise auffrischen</button>
+            <button class="btn ghost" onclick="withLoading(this,()=>refreshTcgPrices(25))">25 auffrischen</button>
+            <span class="quota" id="tcgPriceInfo"></span>
+          </div>
+          <pre class="out" id="tcgPriceOut"></pre>
+        </div>
       </div>
     </section>
 
@@ -403,36 +416,26 @@
         </div>
 
         <div class="field-row">
-          <div class="field"><label class="lbl">Schnellauswahl Größe</label>
+          <div class="field"><label class="lbl">Größe</label>
             <div class="btn-row" style="margin-top:2px">
               <button class="btn ghost sm" onclick="applyPreset('kompakt')">Kompakt</button>
-              <button class="btn ghost sm" onclick="applyPreset('standard')">Standard</button>
-              <button class="btn ghost sm" onclick="applyPreset('schmal')">Schmal</button>
+              <button class="btn ghost sm" onclick="applyPreset('normal')">Normal</button>
+              <button class="btn ghost sm" onclick="applyPreset('gross')">Groß</button>
             </div>
           </div>
           <div class="field"><label class="lbl">Max. Breite (px/%/leer = volle Breite)</label>
-            <input class="in" id="th_maxWidth" placeholder="z.B. 380px (leer = volle Breite)" oninput="previewTheme()"></div>
+            <input class="in" id="th_maxWidth" placeholder="z.B. 400px (leer = volle Breite)" oninput="previewTheme()"></div>
         </div>
 
         <div class="field-row">
-          <div class="field"><label class="lbl">Layout</label>
-            <select class="in" id="th_layout" onchange="previewTheme()">
-              <option value="inline">Inline (schlanke Zeile)</option>
-              <option value="card">Karte (etwas mehr Rahmen)</option>
-            </select></div>
-          <div class="field"><label class="lbl">Größe</label>
+          <div class="field"><label class="lbl">Größe (Feinwahl)</label>
             <select class="in" id="th_size" onchange="previewTheme()">
-              <option value="standard">Standard</option>
-              <option value="kompakt">Kompakt (kleiner, enger)</option>
+              <option value="kompakt">Kompakt</option>
+              <option value="normal">Normal</option>
+              <option value="gross">Groß</option>
             </select></div>
-        </div>
-
-        <div class="field-row">
           <div class="field"><label class="lbl">Schriftart (CSS, leer = Shop-Schrift)</label>
             <input class="in" id="th_font" placeholder="inherit" oninput="previewTheme()"></div>
-          <div class="field"><label class="lbl">&nbsp;</label>
-            <div></div></div>
-        </div>
         </div>
 
         <div class="field-row">
@@ -468,10 +471,7 @@
             <select class="in" id="th_showBrand" onchange="previewTheme()">
               <option value="true">anzeigen</option><option value="false">ausblenden</option>
             </select></div>
-          <div class="field"><label class="lbl">Abweichung vom 7/30-Tage-Schnitt</label>
-            <select class="in" id="th_showAvg" onchange="previewTheme()">
-              <option value="true">anzeigen</option><option value="false">ausblenden</option>
-            </select></div>
+          <div class="field"><label class="lbl">&nbsp;</label><div></div></div>
         </div>
 
         <label class="lbl" style="margin-top:8px">Live-Vorschau</label>
@@ -710,6 +710,31 @@
   }
 
   var _noMatch=[];
+  async function tcgPriceStats(){
+    try{
+      const r=await call('/admin/tcg-price-stats','GET');
+      const b=r.body||{};
+      const info='Mit tcg_id: '+(b.with_id||0)+' · davon mit Preis: '+(b.with_price||0);
+      document.getElementById('tcgPriceInfo').textContent=info;
+      show('tcgPriceOut',b);
+    }catch(e){ toast('Fehler: '+e.message,'err'); }
+  }
+
+  async function refreshTcgPrices(limit){
+    try{
+      const r=await call('/admin/refresh-tcg-prices','POST',{ limit:limit });
+      if(r.status===429 || (r.body && r.body.error==='RATE_LIMIT')){
+        toast('JustTCG-Tageslimit erreicht. Morgen weiter.','info');
+        document.getElementById('tcgPriceInfo').textContent='Tageslimit erreicht';
+        show('tcgPriceOut',r.body);
+        return;
+      }
+      const b=r.body||{};
+      toast((b.updated||0)+' Preise aktualisiert'+(b.noPrice?(', '+b.noPrice+' ohne Preis'):'')+(b.failed?(', '+b.failed+' Fehler'):'')+'.', (b.updated>0)?'ok':'info');
+      show('tcgPriceOut',b);
+    }catch(e){ toast('Fehler: '+e.message,'err'); show('tcgPriceOut','Fehler: '+e.message); }
+  }
+
   async function loadNoMatch(){
     try{
       const r=await call('/admin/no-match-list','GET');
@@ -843,7 +868,7 @@
     var html='<div style="padding:4px 0 10px">';
     list.forEach(function(c){
       html+='<div class="cand">'+
-        '<button class="btn sm" onclick="chooseTcgid(\''+p.cardmarket_slug.replace(/'/g,"\\'")+'\','+c.tcgplayerId+','+i+')">Wählen</button>'+
+        '<button class="btn sm" onclick="chooseTcgid(\''+p.cardmarket_slug.replace(/'/g,"\\'")+'\','+c.tcgplayerId+','+i+','+(c.price!=null?c.price:'null')+')">Wählen</button>'+
         priceFlag(st.cmPrice, c.price)+
         '<span><b>'+c.name+'</b> · '+(c.setName||'')+' · <code>'+c.tcgplayerId+'</code> · $'+(c.price!=null?c.price:'-')+'</span></div>';
     });
@@ -896,15 +921,15 @@
   function setAll(i,val){ if(_candCache[i]){ _candCache[i].showingAll=val; renderCands(i); } }
   function closeCand(i){ const cell=document.querySelector('#cand-'+i+' td'); cell.innerHTML=''; cell.dataset.open='0'; }
 
-  async function chooseTcgid(slug,tcgId,i){
+  async function chooseTcgid(slug,tcgId,i,priceUsd){
     try{
-      const r=await call('/admin/set-tcgid','POST',{ slug, tcgId });
+      const r=await call('/admin/set-tcgid','POST',{ slug, tcgId, priceUsd:priceUsd });
       if(r.body.updated){
         delete _candCache[i];
         const cell=document.querySelector('#cand-'+i+' td');
         cell.dataset.open='0';
-        cell.innerHTML='<span class="ok-msg">✓ tcg_id '+tcgId+' gespeichert</span>';
-        toast('tcg_id '+tcgId+' zugewiesen.','ok');
+        cell.innerHTML='<span class="ok-msg">✓ tcg_id '+tcgId+' gespeichert'+(priceUsd!=null?' (Preis $'+priceUsd+')':'')+'</span>';
+        toast('tcg_id '+tcgId+' zugewiesen'+(priceUsd!=null?', Preis übernommen':'')+'.','ok');
       } else { toast('Konnte nicht speichern.','err'); }
     }catch(e){ toast('Fehler: '+e.message,'err'); }
   }
@@ -912,29 +937,26 @@
   // ── Widget-Theme-Editor ──
   function themeFromFields(){
     return {
-      layout:document.getElementById('th_layout').value,
       size:document.getElementById('th_size').value,
       maxWidth:document.getElementById('th_maxWidth').value||'',
       font:document.getElementById('th_font').value||'inherit',
-      accent:document.getElementById('th_accent').value||'#111111',
+      accent:document.getElementById('th_accent').value||'#6c63ff',
       text:document.getElementById('th_text').value||'#1a1a1a',
       muted:document.getElementById('th_muted').value||'#8a8a8a',
       border:document.getElementById('th_border').value||'#e6e6e6',
-      bg:document.getElementById('th_bg').value||'transparent',
-      radius:document.getElementById('th_radius').value||'10px',
-      label:document.getElementById('th_label').value||'Marktpreis',
+      bg:document.getElementById('th_bg').value||'#ffffff',
+      radius:document.getElementById('th_radius').value||'12px',
+      label:document.getElementById('th_label').value||'Marktpreis-Vergleich',
       cheaperText:document.getElementById('th_cheaper').value||'Du sparst',
       note:document.getElementById('th_note').value||'',
       showBrand:document.getElementById('th_showBrand').value==='true',
-      showAverages:document.getElementById('th_showAvg').value==='true',
       brand:'CardPulse'
     };
   }
 
   function fieldsFromTheme(t){
     t=t||{};
-    document.getElementById('th_layout').value=t.layout||'inline';
-    document.getElementById('th_size').value=t.size||'standard';
+    document.getElementById('th_size').value=t.size||'normal';
     document.getElementById('th_maxWidth').value=t.maxWidth||'';
     document.getElementById('th_font').value=t.font||'';
     document.getElementById('th_accent').value=t.accent||'';
@@ -947,52 +969,45 @@
     document.getElementById('th_cheaper').value=t.cheaperText||'';
     document.getElementById('th_note').value=t.note||'';
     document.getElementById('th_showBrand').value=(t.showBrand===false)?'false':'true';
-    document.getElementById('th_showAvg').value=(t.showAverages===false)?'false':'true';
   }
 
-  // Schnellauswahl: setzt Größe/Breite-Felder und aktualisiert die Vorschau.
+  // Schnellauswahl: setzt die Größe und aktualisiert die Vorschau.
   function applyPreset(name){
-    if(name==='kompakt'){
-      document.getElementById('th_size').value='kompakt';
-      document.getElementById('th_maxWidth').value='';
-      document.getElementById('th_layout').value='inline';
-    } else if(name==='standard'){
-      document.getElementById('th_size').value='standard';
-      document.getElementById('th_maxWidth').value='';
-      document.getElementById('th_layout').value='inline';
-    } else if(name==='schmal'){
-      document.getElementById('th_size').value='kompakt';
-      document.getElementById('th_maxWidth').value='320px';
-      document.getElementById('th_layout').value='card';
+    if(name==='kompakt'||name==='normal'||name==='gross'){
+      document.getElementById('th_size').value=name;
     }
     previewTheme();
-    toast('Preset „'+name+'" angewendet – nicht vergessen zu speichern.','info');
+    toast('Größe „'+name+'" gewählt – nicht vergessen zu speichern.','info');
   }
 
   var _SIZE_PRESETS={
-    kompakt:{pad:'9px 11px',cardPad:'12px',fs:'13px',gap:'8px',trendFs:'10px'},
-    standard:{pad:'12px 14px',cardPad:'16px',fs:'14px',gap:'10px',trendFs:'11px'}
+    kompakt:{pad:'11px 13px',gap:'8px',boxGap:'7px',boxPad:'8px 10px',boxRadius:'8px',labelFs:'10px',blFs:'9px',prFs:'15px',footFs:'11px'},
+    normal:{pad:'14px 16px',gap:'11px',boxGap:'9px',boxPad:'10px 12px',boxRadius:'9px',labelFs:'11px',blFs:'10px',prFs:'18px',footFs:'12.5px'},
+    gross:{pad:'18px 20px',gap:'14px',boxGap:'10px',boxPad:'12px 13px',boxRadius:'10px',labelFs:'12px',blFs:'11px',prFs:'20px',footFs:'14px'}
   };
 
   function previewTheme(){
     var th=themeFromFields();
-    var sz=_SIZE_PRESETS[th.size]||_SIZE_PRESETS.standard;
-    var pad=th.layout==='card'?sz.cardPad:sz.pad;
+    var sz=_SIZE_PRESETS[th.size]||_SIZE_PRESETS.normal;
     var maxW=th.maxWidth?th.maxWidth:'100%';
+    // Demo: Shop 89,99 günstiger als Cardmarket 92,90 + TCGPlayer 108,40
+    function box(label,price,good){
+      return '<div style="border-radius:'+sz.boxRadius+';padding:'+sz.boxPad+';min-width:0;'+
+        'background:'+(good?'rgba(26,138,74,.08)':'#f6f6f9')+';border:1px solid '+(good?'rgba(26,138,74,.3)':th.border)+'">'+
+        '<div style="font-size:'+sz.blFs+';text-transform:uppercase;letter-spacing:.03em;color:'+th.muted+';margin-bottom:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+label+'</div>'+
+        '<div style="font-size:'+sz.prFs+';font-weight:700;white-space:nowrap;color:'+(good?'#1a8a4a':th.text)+'">'+price+'</div></div>';
+    }
     var card='<div style="box-sizing:border-box;font-family:'+th.font+';color:'+th.text+
       ';border:1px solid '+th.border+';border-radius:'+th.radius+';background:'+th.bg+
-      ';padding:'+pad+';font-size:'+sz.fs+';line-height:1.4;max-width:'+maxW+'">';
+      ';padding:'+sz.pad+';line-height:1.4;max-width:'+maxW+'">';
     card+='<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:'+sz.gap+'">'+
-      '<span style="font-size:11px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;color:'+th.muted+'">'+esc(th.label)+'</span>';
-    if(th.showBrand) card+='<span style="font-size:10px;color:'+th.muted+';opacity:.8">via <b style="color:'+th.accent+';font-weight:600">'+esc(th.brand)+'</b></span>';
+      '<span style="font-size:'+sz.labelFs+';font-weight:600;letter-spacing:.04em;text-transform:uppercase;color:'+th.muted+'">'+esc(th.label)+'</span>';
+    if(th.showBrand) card+='<span style="font-size:10px;color:'+th.muted+';opacity:.85;white-space:nowrap">via <b style="color:'+th.accent+';font-weight:600">'+esc(th.brand)+'</b></span>';
     card+='</div>';
-    card+='<div style="display:flex;align-items:baseline;gap:10px;flex-wrap:wrap">'+
-      '<span style="font-size:13px;color:'+th.muted+'">Cardmarket ab <b style="color:'+th.text+';font-weight:600;font-size:15px">92,90 €</b></span>'+
-      '<span style="font-size:12px;font-weight:600;color:#1a8a4a;background:rgba(26,138,74,.1);padding:2px 8px;border-radius:999px">'+esc(th.cheaperText)+' 2,91 €</span></div>';
-    if(th.showAverages) card+='<div style="display:flex;gap:16px;font-size:'+sz.trendFs+';color:'+th.muted+';margin-top:8px;border-top:1px solid '+th.border+';padding-top:8px">'+
-      '<span>vs. 7-Tage Ø: <span style="color:#c4341a;font-weight:600">↘ -2,6 %</span></span>'+
-      '<span>vs. 30-Tage Ø: <span style="color:#1a8a4a;font-weight:600">↗ +2,1 %</span></span></div>';
-    if(th.note) card+='<div style="font-size:10px;color:'+th.muted+';margin-top:6px;opacity:.85">'+esc(th.note)+'</div>';
+    card+='<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:'+sz.boxGap+'">'+
+      box('Dieser Shop','89,99 €',true)+box('Cardmarket','92,90 €',false)+box('TCGplayer','108,40 €',false)+'</div>';
+    card+='<div style="font-size:'+sz.footFs+';font-weight:600;text-align:center;margin-top:'+sz.gap+';color:#1a8a4a">✓ Günstiger als beide Marktpreise – bis zu 18,41 € gespart</div>';
+    if(th.note) card+='<div style="font-size:10px;color:'+th.muted+';margin-top:6px;opacity:.85;text-align:center">'+esc(th.note)+'</div>';
     card+='</div>';
     document.getElementById('themePreview').innerHTML=card;
   }
