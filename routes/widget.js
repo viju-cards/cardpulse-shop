@@ -17,6 +17,7 @@ const router = express.Router();
 const { pool } = require("../lib/db");
 const { authenticateShop, incrementUsage } = require("../lib/shopAuth");
 const tcggo = require("../lib/tcggo");
+const { getUsdToEur } = require("../lib/fx");
 
 // Cache-Lebensdauer. 12h = Preise sind frisch genug, RapidAPI bleibt geschont.
 const CACHE_TTL_MS = 12 * 60 * 60 * 1000;
@@ -30,7 +31,7 @@ router.get("/sealed", authenticateShop, async (req, res) => {
   try {
     // ── 2. Slug → cardmarket_id (case-insensitiv, robust gegen Schreibweise) ─
     const map = await pool.query(
-      `SELECT cardmarket_id, tcgplayer_name
+      `SELECT cardmarket_id, tcgplayer_name, tcgplayer_price_usd
          FROM sealed_mapping
         WHERE lower(cardmarket_slug) = lower($1)
         LIMIT 1`,
@@ -44,6 +45,8 @@ router.get("/sealed", authenticateShop, async (req, res) => {
 
     const cardmarketId = map.rows[0].cardmarket_id;
     const productName = map.rows[0].tcgplayer_name;
+    const tcgPriceUsd = map.rows[0].tcgplayer_price_usd != null
+      ? Number(map.rows[0].tcgplayer_price_usd) : null;
 
     // ── 3. Cache-Check ─────────────────────────────────────────────────
     let payload = null;
@@ -94,6 +97,15 @@ router.get("/sealed", authenticateShop, async (req, res) => {
       )
       .catch(() => {}); // Log-Fehler nie den Request killen lassen
 
+    // TCGPlayer-Preis (USD) in EUR umrechnen, falls vorhanden.
+    let tcgPriceEur = null;
+    if (tcgPriceUsd != null && tcgPriceUsd > 0) {
+      try {
+        const rate = await getUsdToEur();
+        tcgPriceEur = Math.round(tcgPriceUsd * rate * 100) / 100;
+      } catch (e) { tcgPriceEur = null; }
+    }
+
     // ── Antwort ────────────────────────────────────────────────────────
     res.json({
       product: {
@@ -108,6 +120,7 @@ router.get("/sealed", authenticateShop, async (req, res) => {
         lowestDE: payload.lowestDE,  // optional: nur deutsche Verkäufer
         avg7d: payload.avg7d,
         avg30d: payload.avg30d,
+        tcgplayer: tcgPriceEur,      // TCGPlayer-Preis in EUR (oder null)
       },
       theme: req.shop.theme || null,   // pro-Shop-Design (oder null = Default)
       meta: {
