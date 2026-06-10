@@ -408,15 +408,20 @@ router.get("/search-tcgid", async (req, res) => {
 router.post("/set-tcgid", async (req, res) => {
   const slug = (req.body.slug || "").trim();
   const tcgId = req.body.tcgId;
+  const priceUsd = (req.body.priceUsd != null && !isNaN(Number(req.body.priceUsd)))
+    ? Number(req.body.priceUsd) : null;
   if (!slug || !tcgId) return res.status(400).json({ error: "MISSING_SLUG_OR_TCGID" });
   try {
+    // Preis nur setzen, wenn mitgeliefert – sonst nur die ID aktualisieren.
     const result = await pool.query(
       `UPDATE sealed_mapping
-          SET tcg_player_id = $2
+          SET tcg_player_id = $2,
+              tcgplayer_price_usd = COALESCE($3, tcgplayer_price_usd),
+              tcgplayer_price_at  = CASE WHEN $3 IS NOT NULL THEN NOW() ELSE tcgplayer_price_at END
         WHERE lower(cardmarket_slug) = lower($1)`,
-      [slug, tcgId]
+      [slug, tcgId, priceUsd]
     );
-    res.json({ updated: result.rowCount, slug, tcgId });
+    res.json({ updated: result.rowCount, slug, tcgId, priceUsd });
   } catch (err) {
     console.error("[/admin/set-tcgid]", err.message);
     res.status(500).json({ error: "SERVER_ERROR", message: err.message });
@@ -502,6 +507,75 @@ router.get("/shop-theme", async (req, res) => {
     res.json(rows[0]);
   } catch (err) {
     console.error("[/admin/shop-theme]", err.message);
+    res.status(500).json({ error: "SERVER_ERROR", message: err.message });
+  }
+});
+
+// TCGPlayer-Preise auffrischen: nimmt Produkte mit tcg_id, holt den aktuellen
+// JustTCG-Preis und speichert ihn. Batchweise (limit) wegen 100/Tag-Limit.
+// Priorität: zuerst die ohne Preis, dann die ältesten.
+router.post("/refresh-tcg-prices", async (req, res) => {
+  const limit = Math.min(Math.max(parseInt(req.body.limit, 10) || 10, 1), 50);
+  try {
+    const { rows } = await pool.query(
+      `SELECT cardmarket_slug, tcgplayer_name, tcg_player_id
+         FROM sealed_mapping
+        WHERE tcg_player_id IS NOT NULL
+        ORDER BY tcgplayer_price_at ASC NULLS FIRST
+        LIMIT $1`,
+      [limit]
+    );
+
+    let updated = 0, failed = 0, noPrice = 0;
+    const results = [];
+    for (const row of rows) {
+      try {
+        const price = await justtcg.fetchPriceByTcgId(row.tcgplayer_name, row.tcg_player_id);
+        if (price != null) {
+          await pool.query(
+            `UPDATE sealed_mapping
+                SET tcgplayer_price_usd = $2, tcgplayer_price_at = NOW()
+              WHERE lower(cardmarket_slug) = lower($1)`,
+            [row.cardmarket_slug, price]
+          );
+          updated++;
+          results.push({ slug: row.cardmarket_slug, priceUsd: price, ok: true });
+        } else {
+          noPrice++;
+          results.push({ slug: row.cardmarket_slug, ok: false, reason: "kein Preis gefunden" });
+        }
+      } catch (e) {
+        if (e.rateLimit) {
+          return res.status(429).json({
+            error: "RATE_LIMIT",
+            message: "JustTCG-Tageslimit erreicht. Morgen weiter.",
+            updated, failed, noPrice, results,
+          });
+        }
+        failed++;
+        results.push({ slug: row.cardmarket_slug, ok: false, reason: e.message });
+      }
+    }
+
+    res.json({ processed: rows.length, updated, noPrice, failed, results });
+  } catch (err) {
+    console.error("[/admin/refresh-tcg-prices]", err.message);
+    res.status(500).json({ error: "SERVER_ERROR", message: err.message });
+  }
+});
+
+// Statistik: wie viele Produkte haben schon einen TCGPlayer-Preis?
+router.get("/tcg-price-stats", async (_req, res) => {
+  try {
+    const { rows } = await pool.query(
+      `SELECT
+         COUNT(*) FILTER (WHERE tcg_player_id IS NOT NULL) AS with_id,
+         COUNT(*) FILTER (WHERE tcgplayer_price_usd IS NOT NULL) AS with_price,
+         MIN(tcgplayer_price_at) AS oldest
+       FROM sealed_mapping`
+    );
+    res.json(rows[0]);
+  } catch (err) {
     res.status(500).json({ error: "SERVER_ERROR", message: err.message });
   }
 });
