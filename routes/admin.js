@@ -15,7 +15,7 @@ const router = express.Router();
 
 const { pool } = require("../lib/db");
 const tcggo = require("../lib/tcggo");
-const justtcg = require("../lib/justtcg");
+const justtcg = require("../lib/justtcg"); 
 
 const PLAN_LIMITS = { starter: 1000, shop: 5000, pro: 20000 };
 
