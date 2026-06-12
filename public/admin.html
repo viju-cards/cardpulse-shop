@@ -698,15 +698,27 @@
 
   async function markNoMatch(i){
     const p=_missing[i];
+    if(!p) return;
     if(!confirm('"'+p.tcgplayer_name+'" als „kein TCGPlayer-Pendant" markieren? Verschwindet dann aus der Liste.')) return;
     try{
       const r=await call('/admin/mark-no-match','POST',{ slug:p.cardmarket_slug });
       if(r.body.updated){
-        _missing.splice(i,1);  // aus lokaler Liste entfernen
+        // Zeile + zugehörige Kandidaten-Zeile direkt aus dem DOM entfernen.
+        // KEIN splice/renderMissing → Indizes der anderen Zeilen bleiben stabil,
+        // ihre Such-/Zuweisungszustände in _candCache gehen nicht verloren.
+        var candRow=document.getElementById('cand-'+i);
+        var mainRow=candRow ? candRow.previousElementSibling : null;
+        if(candRow) candRow.remove();
+        if(mainRow) mainRow.remove();
+        _missing[i]=null;          // Platzhalter, hält die Indizes stabil
         delete _candCache[i];
-        renderMissing();
-      }
-    }catch(e){ alert('Fehler: '+e.message); }
+        toast('„'+p.tcgplayer_name+'" als „kein TCG" markiert.','ok');
+        // Wenn nichts mehr übrig ist, Hinweis zeigen.
+        if(_missing.every(function(x){return x===null;})){
+          document.getElementById('missingList').innerHTML='<p class="panel-hint" style="margin:6px 0 0">Alle Einträge bearbeitet.</p>';
+        }
+      } else { toast('Konnte nicht markieren.','err'); }
+    }catch(e){ toast('Fehler: '+e.message,'err'); }
   }
 
   var _noMatch=[];
@@ -714,7 +726,10 @@
     try{
       const r=await call('/admin/tcg-price-stats','GET');
       const b=r.body||{};
-      const info='Mit tcg_id: '+(b.with_id||0)+' · davon mit Preis: '+(b.with_price||0);
+      var info='Mit tcg_id: '+(b.with_id||0)+' · davon mit Preis: '+(b.with_price||0);
+      if(b.justtcgToday){
+        info+=' · JustTCG heute: '+b.justtcgToday.used+'/'+b.justtcgToday.budget+(b.justtcgToday.autoRefreshAllowed?'':' (Auto-Refresh pausiert)');
+      }
       document.getElementById('tcgPriceInfo').textContent=info;
       show('tcgPriceOut',b);
     }catch(e){ toast('Fehler: '+e.message,'err'); }
@@ -768,9 +783,11 @@
 
   function renderMissing(){
     const c=document.getElementById('missingList');
-    if(_missing.length===0){ c.innerHTML='<p class="panel-hint" style="margin:6px 0 0">Alle Einträge haben eine tcgplayer_id.</p>'; return; }
+    var visible=_missing.filter(function(p){return p!==null;});
+    if(visible.length===0){ c.innerHTML='<p class="panel-hint" style="margin:6px 0 0">Alle Einträge haben eine tcgplayer_id.</p>'; return; }
     var html='<table class="tbl"><tr><th>Name</th><th>Slug</th><th>Aktion</th></tr>';
     _missing.forEach(function(p,i){
+      if(p===null) return; // übersprungene (bereits markierte) Einträge auslassen
       html+='<tr>'+
         '<td>'+(p.tcgplayer_name||'')+'</td>'+
         '<td><code>'+(p.cardmarket_slug||'')+'</code></td>'+
